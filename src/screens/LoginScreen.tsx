@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
+import { biometricService, BiometricType } from '../services/biometric.service';
 import { User } from '../types/auth';
 
 interface LoginScreenProps {
@@ -25,7 +26,39 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Estados de Biometria
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState<BiometricType>('none');
+  const [lastUser, setLastUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    async function checkBiometrics() {
+      try {
+        const available = await biometricService.isAvailable();
+        setBiometricAvailable(available);
+
+        if (available) {
+          const type = await biometricService.getBiometryType();
+          setBiometricType(type);
+        }
+
+        const stored = await api.getLastUser();
+        if (stored) {
+          setLastUser(stored);
+          if (stored.email) {
+            setEmail(stored.email);
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao inicializar biometria:', err);
+      }
+    }
+
+    checkBiometrics();
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -37,6 +70,10 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       setLoading(true);
       setErrorMessage(null);
       const auth = await api.login({ email: email.trim(), password });
+      // Se houver biometria no aparelho, habilita para o próximo acesso
+      if (biometricAvailable) {
+        await biometricService.setEnabled(true);
+      }
       onLoginSuccess(auth.user);
     } catch (err: any) {
       setErrorMessage(err.message || 'Falha ao autenticar.');
@@ -44,6 +81,39 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       setLoading(false);
     }
   };
+
+  const handleBiometricAuth = async () => {
+    try {
+      setBiometricLoading(true);
+      setErrorMessage(null);
+
+      const label = biometricType === 'facial' ? 'Face ID' : 'Impressão Digital';
+      const success = await biometricService.authenticate(
+        `Confirme com ${label} para entrar no RM Frotas`
+      );
+
+      if (!success) {
+        setBiometricLoading(false);
+        return;
+      }
+
+      const user = await api.loginWithBiometrics();
+      if (user) {
+        onLoginSuccess(user);
+      } else {
+        setErrorMessage(
+          'Sessão expirada. Digite sua senha uma vez para revalidar a biometria.'
+        );
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao autenticar com biometria.');
+    } finally {
+      setBiometricLoading(false);
+    }
+  };
+
+  const biometricTitle =
+    biometricType === 'facial' ? 'Face ID' : 'Digital';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -85,6 +155,43 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </View>
             )}
 
+            {/* BOTÃO DE ACESSO BIOMÉTRICO RÁPIDO SE HOUVER USUÁRIO ANTERIOR */}
+            {biometricAvailable && lastUser && (
+              <View style={styles.biometricSection}>
+                <TouchableOpacity
+                  style={styles.biometricButton}
+                  onPress={handleBiometricAuth}
+                  disabled={biometricLoading || loading}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.biometricIconBadge}>
+                    <Text style={{ fontSize: 20 }}>
+                      {biometricType === 'facial' ? '👤' : '👆'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.biometricTitleText}>
+                      Entrar com {biometricTitle}
+                    </Text>
+                    <Text style={styles.biometricSubText}>
+                      Continuar como {lastUser.name || 'Motorista'}
+                    </Text>
+                  </View>
+                  {biometricLoading ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Text style={styles.biometricArrow}>→</Text>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>ou digite sua senha</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+              </View>
+            )}
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>E-mail</Text>
               <TextInput
@@ -120,18 +227,34 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.loginButton, loading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={loading}
-              activeOpacity={0.85}
-            >
-              {loading ? (
-                <ActivityIndicator color="#080B0C" size="small" />
-              ) : (
-                <Text style={styles.loginButtonText}>Entrar</Text>
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.loginButton, loading && styles.buttonDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#080B0C" size="small" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Entrar</Text>
+                )}
+              </TouchableOpacity>
+
+              {/* Botão compacto de biometria ao lado se não houver card rápido */}
+              {biometricAvailable && !lastUser && (
+                <TouchableOpacity
+                  style={styles.biometricQuickIconButton}
+                  onPress={handleBiometricAuth}
+                  disabled={biometricLoading}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ fontSize: 22 }}>
+                    {biometricType === 'facial' ? '👤' : '👆'}
+                  </Text>
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
           </View>
 
           {/* RODAPÉ */}
@@ -139,7 +262,9 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <Text style={styles.footerText}>
               RM FROTAS • SUA FROTA, MAIS EFICIENTE
             </Text>
-            <Text style={styles.footerVersion}>Versão Nativa 1.0.0</Text>
+            <Text style={styles.footerVersion}>
+              Versão Nativa 1.0.0 {biometricAvailable ? '• Biometria Ativa' : ''}
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -163,7 +288,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 28,
   },
   logoBadge: {
     width: 52,
@@ -245,6 +370,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  biometricSection: {
+    marginBottom: 18,
+  },
+  biometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 0, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.3)',
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  biometricIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 107, 0, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  biometricTitleText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  biometricSubText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  biometricArrow: {
+    fontSize: 18,
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: 11,
+    color: colors.textDim,
+    fontWeight: '600',
+  },
   inputGroup: {
     marginBottom: 16,
   },
@@ -281,18 +458,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
   loginButton: {
+    flex: 1,
     backgroundColor: colors.primary,
     borderRadius: 14,
     paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 6,
+  },
+  biometricQuickIconButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -305,7 +498,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    marginTop: 32,
+    marginTop: 28,
     gap: 4,
   },
   footerText: {

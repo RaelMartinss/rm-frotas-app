@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
+import { biometricService } from '../services/biometric.service';
 import { User } from '../types/auth';
 
 interface HomeScreenProps {
@@ -17,6 +18,12 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ user, onLogout }: HomeScreenProps) {
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+
+  useEffect(() => {
+    biometricService.isAvailable().then(setBiometricAvailable);
+  }, []);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
@@ -24,7 +31,14 @@ export function HomeScreen({ user, onLogout }: HomeScreenProps) {
         {/* HEADER DO COCKPIT */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Olá, motorista</Text>
+            <View style={styles.greetingRow}>
+              <Text style={styles.greeting}>Olá, motorista</Text>
+              {biometricAvailable && (
+                <View style={styles.bioBadge}>
+                  <Text style={styles.bioBadgeText}>👆 BIOMETRIA ATIVA</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.driverName}>{user.name || 'Motorista'}</Text>
           </View>
           <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
@@ -102,12 +116,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   greeting: {
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  bioBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  bioBadgeText: {
+    color: '#34D399',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   driverName: {
     fontSize: 20,
