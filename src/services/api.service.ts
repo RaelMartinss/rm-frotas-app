@@ -18,7 +18,7 @@ class ApiService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...credentials,
-        deviceInfo: { platform: 'react-native' },
+        deviceInfo: { platform: 'mobile' },
       }),
     });
 
