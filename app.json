@@ -7,10 +7,6 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#080B0C",
-    "splash": {
-      "backgroundColor": "#080B0C",
-      "resizeMode": "contain"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.rmfrotas.app"
@@ -29,7 +25,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font"
     ]
   }
 }
