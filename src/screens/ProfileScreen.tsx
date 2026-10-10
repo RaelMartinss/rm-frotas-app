@@ -450,120 +450,145 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
             </View>
           </View>
 
-          {/* LINHA DE DADOS DOCUMENTAIS (3 COLUNAS) */}
-          <View style={styles.docCard}>
-            {/* 1. CPF */}
-            <View style={styles.docColCpf}>
-              <View style={styles.docLabelRow}>
-                <Ionicons name="person-outline" size={13} color="#8E9DA8" />
-                <Text style={styles.docLabelText}>CPF</Text>
+          {/* SEÇÃO 1: DOCUMENTOS & HABILITAÇÃO */}
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeaderLeft}>
+                <Ionicons name="card-outline" size={15} color="#FF7A00" />
+                <Text style={styles.sectionHeaderTitle}>DOCUMENTOS & HABILITAÇÃO</Text>
               </View>
-              <Text
-                style={styles.docValueText}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-              >
-                {formatCpf(driverCpf)}
-              </Text>
+              <View style={styles.regularBadge}>
+                <View style={styles.regularDot} />
+                <Text style={styles.regularBadgeText}>REGULAR</Text>
+              </View>
             </View>
 
-            {/* 2. CNH - apenas categoria sem números */}
-            <View style={[styles.docColCnh, styles.docColDivider]}>
-              <View style={styles.docLabelRow}>
-                <MaterialCommunityIcons name="card-account-details-outline" size={13} color="#8E9DA8" />
-                <Text style={styles.docLabelText}>CNH</Text>
+            <View style={styles.docTilesRow}>
+              {/* 1. CPF */}
+              <View style={styles.docTile}>
+                <View style={styles.docTileHeader}>
+                  <Ionicons name="person-outline" size={13} color="#8E9DA8" />
+                  <Text style={styles.docTileLabel}>CPF</Text>
+                </View>
+                <Text
+                  style={styles.docTileValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  {formatCpf(driverCpf)}
+                </Text>
+                <Text style={styles.docTileSub}>Titular</Text>
               </View>
-              <Text
-                style={styles.docValueText}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-              >
-                Categoria {driverCnhCat}
-              </Text>
-            </View>
 
-            {/* 3. Validade CNH */}
-            <View style={styles.docColValidade}>
-              <View style={styles.docLabelRow}>
-                <Ionicons name="calendar-outline" size={13} color="#8E9DA8" />
-                <Text style={styles.docLabelText} numberOfLines={1}>VALIDADE</Text>
+              {/* 2. CNH */}
+              <View style={styles.docTile}>
+                <View style={styles.docTileHeader}>
+                  <MaterialCommunityIcons name="card-account-details-outline" size={13} color="#FF7A00" />
+                  <Text style={styles.docTileLabel}>CNH</Text>
+                </View>
+                <Text
+                  style={styles.docTileValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  Cat. {driverCnhCat}
+                </Text>
+                <Text style={styles.docTileSub}>Habilitado</Text>
               </View>
-              <Text
-                style={styles.docValueText}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-              >
-                {formatDate(driverCnhExp)}
-              </Text>
+
+              {/* 3. Validade CNH */}
+              <View style={styles.docTile}>
+                <View style={styles.docTileHeader}>
+                  <Ionicons name="calendar-outline" size={13} color="#8E9DA8" />
+                  <Text style={styles.docTileLabel} numberOfLines={1}>VALIDADE</Text>
+                </View>
+                <Text
+                  style={styles.docTileValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  {formatDate(driverCnhExp)}
+                </Text>
+                <Text style={styles.docTileSub}>Em dia</Text>
+              </View>
             </View>
           </View>
 
-          {/* CARDS DE STATUS ATUAL (2 COLUNAS) */}
-          <View style={styles.twoColsGrid}>
-            {/* 1. Veículo Atual */}
-            <TouchableOpacity
-              style={styles.statusCard}
-              activeOpacity={0.7}
-              onPress={() => {
-                Alert.alert(
-                  'Veículo da Frota',
-                  `Placa: ${vehiclePlate}\nModelo: ${vehicleModel}\nKM Atual: ${vehicleKm}\nCRLV: Regularizado`
-                );
-              }}
-            >
-              <View style={styles.statusCardHeader}>
-                <View style={styles.statusCardIconBoxOrange}>
-                  <Ionicons name="car-outline" size={16} color="#FF7A00" />
-                </View>
-                <Text style={styles.statusCardHeaderLabel}>Veículo atual</Text>
-                <Ionicons name="chevron-forward" size={15} color="#8E9DA8" style={styles.statusCardChevron} />
+          {/* SEÇÃO 2: OPERAÇÃO ATUAL */}
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeaderLeft}>
+                <Ionicons name="speedometer-outline" size={15} color="#FF7A00" />
+                <Text style={styles.sectionHeaderTitle}>OPERAÇÃO ATUAL</Text>
               </View>
-              <View style={styles.statusCardBody}>
-                <Text style={styles.vehiclePlateText}>{vehiclePlate}</Text>
-                <Text style={styles.statusCardSub} numberOfLines={1}>
-                  {vehicleModel} • {vehicleKm}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            </View>
 
-            {/* 2. Última Viagem */}
-            <TouchableOpacity
-              style={styles.statusCard}
-              activeOpacity={0.7}
-              onPress={() => {
-                if (onNavigateToHistory) onNavigateToHistory();
-              }}
-            >
-              <View style={styles.statusCardHeader}>
-                <View style={styles.statusCardIconBoxGrey}>
-                  <Ionicons name="location-outline" size={16} color="#CAD2D9" />
+            <View style={styles.twoColsGrid}>
+              {/* 1. Veículo Atual */}
+              <TouchableOpacity
+                style={styles.harmonizedCard}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Alert.alert(
+                    'Veículo da Frota',
+                    `Placa: ${vehiclePlate}\nModelo: ${vehicleModel}\nKM Atual: ${vehicleKm}\nCRLV: Regularizado`
+                  );
+                }}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.iconBoxOrange}>
+                    <Ionicons name="car-outline" size={16} color="#FF7A00" />
+                  </View>
+                  <Text style={styles.cardHeaderLabel}>Veículo atual</Text>
+                  <Ionicons name="chevron-forward" size={14} color="#8E9DA8" style={{ marginLeft: 'auto' }} />
                 </View>
-                <Text style={styles.statusCardHeaderLabel}>Última viagem</Text>
-                <Ionicons name="chevron-forward" size={15} color="#8E9DA8" style={styles.statusCardChevron} />
-              </View>
-              <View style={styles.statusCardBody}>
-                <Text style={styles.tripRouteText} numberOfLines={1}>
-                  {tripOrigin} ➔ {tripDest}
-                </Text>
-                <Text style={styles.statusCardSub} numberOfLines={1}>
-                  09/10 18:19 •{' '}
-                  <Text style={{ color: '#FF7A00', fontWeight: '700' }}>
-                    {isTripActive ? 'Em andamento' : 'Concluída'}
+                <View style={styles.cardContentBottom}>
+                  <Text style={styles.cardPrimaryValue}>{vehiclePlate}</Text>
+                  <Text style={styles.cardSecondarySub} numberOfLines={1}>
+                    {vehicleModel} • {vehicleKm}
                   </Text>
-                </Text>
-              </View>
-            </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+
+              {/* 2. Última Viagem */}
+              <TouchableOpacity
+                style={styles.harmonizedCard}
+                activeOpacity={0.7}
+                onPress={() => {
+                  if (onNavigateToHistory) onNavigateToHistory();
+                }}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.iconBoxGrey}>
+                    <Ionicons name="location-outline" size={16} color="#CAD2D9" />
+                  </View>
+                  <Text style={styles.cardHeaderLabel}>Última viagem</Text>
+                  <Ionicons name="chevron-forward" size={14} color="#8E9DA8" style={{ marginLeft: 'auto' }} />
+                </View>
+                <View style={styles.cardContentBottom}>
+                  <Text style={styles.cardPrimaryValue} numberOfLines={1}>
+                    {tripOrigin.split(' ')[0]} ➔ {tripDest.split(' ')[0]}
+                  </Text>
+                  <Text style={styles.cardSecondarySub} numberOfLines={1}>
+                    09/10 •{' '}
+                    <Text style={{ color: '#FF7A00', fontWeight: '700' }}>
+                      {isTripActive ? 'Em andamento' : 'Concluída'}
+                    </Text>
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* SEÇÃO: ESTATÍSTICAS DO MOTORISTA */}
-          <View style={styles.statsSection}>
-            <View style={styles.statsSectionHeader}>
-              <View style={styles.statsHeaderLeft}>
-                <MaterialCommunityIcons name="trending-up" size={18} color="#FF7A00" />
-                <Text style={styles.statsSectionTitle}>ESTATÍSTICAS DO MOTORISTA</Text>
+          {/* SEÇÃO 3: ESTATÍSTICAS DO MOTORISTA */}
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeaderLeft}>
+                <MaterialCommunityIcons name="trending-up" size={16} color="#FF7A00" />
+                <Text style={styles.sectionHeaderTitle}>ESTATÍSTICAS (30 DIAS)</Text>
               </View>
               <TouchableOpacity
                 onPress={() => {
@@ -573,29 +598,37 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 style={styles.statsHeaderRight}
               >
                 <Text style={styles.statsVerTodasText}>Ver todas</Text>
-                <Ionicons name="arrow-forward" size={14} color="#FF7A00" />
+                <Ionicons name="arrow-forward" size={13} color="#FF7A00" />
               </TouchableOpacity>
             </View>
 
             <View style={styles.twoColsGrid}>
               {/* Abastecimentos */}
-              <View style={styles.metricCard}>
-                <View style={styles.metricIconBoxOrange}>
-                  <Ionicons name="funnel-outline" size={18} color="#FF7A00" />
+              <View style={styles.harmonizedCard}>
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.iconBoxOrange}>
+                    <Ionicons name="funnel-outline" size={16} color="#FF7A00" />
+                  </View>
+                  <Text style={styles.cardHeaderLabel}>Abastecimentos</Text>
                 </View>
-                <Text style={styles.metricLabel}>Abastecimentos</Text>
-                <Text style={styles.metricValue}>{monthFuelings}</Text>
-                <Text style={styles.metricTimeSub}>últimos 30 dias</Text>
+                <View style={styles.cardContentBottom}>
+                  <Text style={styles.cardPrimaryValue}>{monthFuelings}</Text>
+                  <Text style={styles.cardSecondarySub}>registrados no mês</Text>
+                </View>
               </View>
 
               {/* Viagens */}
-              <View style={styles.metricCard}>
-                <View style={styles.metricIconBoxGrey}>
-                  <Ionicons name="navigate-outline" size={18} color="#CAD2D9" />
+              <View style={styles.harmonizedCard}>
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.iconBoxGrey}>
+                    <Ionicons name="navigate-outline" size={16} color="#CAD2D9" />
+                  </View>
+                  <Text style={styles.cardHeaderLabel}>Viagens</Text>
                 </View>
-                <Text style={styles.metricLabel}>Viagens</Text>
-                <Text style={styles.metricValue}>{recentTrips}</Text>
-                <Text style={styles.metricTimeSub}>últimos 30 dias</Text>
+                <View style={styles.cardContentBottom}>
+                  <Text style={styles.cardPrimaryValue}>{recentTrips}</Text>
+                  <Text style={styles.cardSecondarySub}>rotas finalizadas</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -1446,152 +1479,48 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  /* CARD DE DOCUMENTOS (3 COLUNAS) */
-  docCard: {
-    backgroundColor: '#11161A',
-    borderWidth: 1,
-    borderColor: '#222A2F',
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  /* SEÇÕES E HEADERS */
+  sectionBlock: {
+    gap: 7,
   },
-  docColCpf: {
-    flex: 1.1,
-    minWidth: 0,
-    gap: 3,
-  },
-  docColCnh: {
-    flex: 0.95,
-    minWidth: 0,
-    gap: 3,
-  },
-  docColValidade: {
-    flex: 1.15,
-    minWidth: 0,
-    gap: 3,
-  },
-  docColDivider: {
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: '#222A2F',
-    paddingHorizontal: 6,
-    marginHorizontal: 3,
-  },
-  docLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  docLabelText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#8E9DA8',
-    letterSpacing: 0.5,
-  },
-  docValueText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#E7EBEE',
-    fontVariant: ['tabular-nums'],
-  },
-  docSubText: {
-    fontSize: 10,
-    color: '#8E9DA8',
-    fontWeight: '500',
-  },
-
-  /* GRID DE 2 COLUNAS */
-  twoColsGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  statusCard: {
-    flex: 1,
-    backgroundColor: '#11161A',
-    borderWidth: 1,
-    borderColor: '#222A2F',
-    borderRadius: 20,
-    padding: 12,
-    justifyContent: 'space-between',
-  },
-  statusCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusCardIconBoxOrange: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 122, 0, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 122, 0, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusCardIconBoxGrey: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: '#1E262B',
-    borderWidth: 1,
-    borderColor: '#222A2F',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusCardHeaderLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#8E9DA8',
-    flex: 1,
-  },
-  statusCardChevron: {
-    marginLeft: 'auto',
-  },
-  statusCardBody: {
-    marginTop: 10,
-    gap: 2,
-  },
-  vehiclePlateText: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#E7EBEE',
-    letterSpacing: 0.5,
-  },
-  tripRouteText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#E7EBEE',
-  },
-  statusCardSub: {
-    fontSize: 10,
-    color: '#8E9DA8',
-    fontWeight: '500',
-  },
-
-  /* ESTATÍSTICAS */
-  statsSection: {
-    gap: 8,
-    marginTop: 4,
-  },
-  statsSectionHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 2,
   },
-  statsHeaderLeft: {
+  sectionHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  statsSectionTitle: {
+  sectionHeaderTitle: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#E7EBEE',
+    color: '#8E9DA8',
+    letterSpacing: 0.8,
+  },
+  regularBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.28)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  regularDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#10B981',
+  },
+  regularBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#10B981',
     letterSpacing: 0.5,
   },
   statsHeaderRight: {
@@ -1604,52 +1533,104 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FF7A00',
   },
-  metricCard: {
+
+  /* TILES DE DOCUMENTOS (3 TILES PROPORCIONAIS) */
+  docTilesRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  docTile: {
     flex: 1,
     backgroundColor: '#11161A',
     borderWidth: 1,
     borderColor: '#222A2F',
-    borderRadius: 20,
-    padding: 14,
+    borderRadius: 16,
+    padding: 10,
+    minHeight: 74,
+    justifyContent: 'space-between',
   },
-  metricIconBoxOrange: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+  docTileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  docTileLabel: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#8E9DA8',
+    letterSpacing: 0.5,
+  },
+  docTileValue: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    fontVariant: ['tabular-nums'],
+  },
+  docTileSub: {
+    fontSize: 10,
+    color: '#8E9DA8',
+    fontWeight: '500',
+  },
+
+  /* GRID DE 2 COLUNAS HARMONIZADO */
+  twoColsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  harmonizedCard: {
+    flex: 1,
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 18,
+    padding: 12,
+    height: 104,
+    justifyContent: 'space-between',
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  iconBoxOrange: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     backgroundColor: 'rgba(255, 122, 0, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(255, 122, 0, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
-  metricIconBoxGrey: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+  iconBoxGrey: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     backgroundColor: '#1E262B',
     borderWidth: 1,
     borderColor: '#222A2F',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
-  metricLabel: {
-    fontSize: 12,
+  cardHeaderLabel: {
+    fontSize: 11,
     fontWeight: '600',
-    color: '#CAD2D9',
+    color: '#8E9DA8',
+    flex: 1,
   },
-  metricValue: {
-    fontSize: 24,
+  cardContentBottom: {
+    gap: 2,
+  },
+  cardPrimaryValue: {
+    fontSize: 15,
     fontWeight: '900',
     color: '#E7EBEE',
-    marginTop: 2,
-    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.3,
   },
-  metricTimeSub: {
-    fontSize: 10,
+  cardSecondarySub: {
+    fontSize: 10.5,
     color: '#8E9DA8',
-    marginTop: 2,
+    fontWeight: '500',
   },
 
   /* TELA DE CONFIGURAÇÕES */
