@@ -164,6 +164,7 @@ if (fs.existsSync(gradlePropsPath)) {
     'org.gradle.caching': 'true',
     'org.gradle.vfs.watch': 'true',
     'android.enableR8.fullMode': 'true',
+    'reactNativeArchitectures': 'armeabi-v7a,arm64-v8a,x86,x86_64',
   };
 
   for (const [key, val] of Object.entries(perfSettings)) {
