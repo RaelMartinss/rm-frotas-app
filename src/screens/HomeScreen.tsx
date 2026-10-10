@@ -306,14 +306,6 @@ export function HomeScreen({
             <Ionicons name="notifications-outline" size={20} color={colors.textSecondary} />
             {unreadNotifs > 0 && <View style={styles.notifBadge} />}
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerIconButton}
-            onPress={onLogout}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-out-outline" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
         </View>
       </View>
 

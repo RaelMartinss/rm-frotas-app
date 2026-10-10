@@ -243,6 +243,28 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
     }
   };
 
+  const handleToggleBiometrics = async (val: boolean) => {
+    try {
+      if (val) {
+        // Se ativando, solicita confirmação biométrica
+        const success = await biometricService.authenticate('Confirme sua biometria para ativar o acesso rápido');
+        if (success) {
+          await biometricService.setEnabled(true);
+          setBiometricsEnabled(true);
+          Alert.alert('Sucesso', 'Autenticação biométrica ativada com sucesso!');
+        } else {
+          Alert.alert('Não autenticado', 'Não foi possível validar a biometria.');
+        }
+      } else {
+        await biometricService.setEnabled(false);
+        setBiometricsEnabled(false);
+        Alert.alert('Biometria Desativada', 'O login biométrico foi desativado.');
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível alterar a configuração de biometria.');
+    }
+  };
+
   const handleChangePassword = async () => {
     if (!currentPassword) {
       Alert.alert('Atenção', 'Informe sua senha atual.');
@@ -658,6 +680,25 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 </View>
                 <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
               </TouchableOpacity>
+
+              <View style={styles.rowDivider} />
+
+              {/* 3. Biometria (Touch ID / Face ID / Impressão Digital) */}
+              <View style={styles.groupedRow}>
+                <View style={styles.rowIconBoxOrange}>
+                  <Ionicons name="finger-print" size={20} color="#FF7A00" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Biometria</Text>
+                  <Text style={styles.rowSubtitleText}>Acesso rápido com digital ou Face ID</Text>
+                </View>
+                <Switch
+                  value={biometricsEnabled}
+                  onValueChange={handleToggleBiometrics}
+                  thumbColor={biometricsEnabled ? '#FF7A00' : '#8E9DA8'}
+                  trackColor={{ false: '#1E262B', true: 'rgba(255, 122, 0, 0.4)' }}
+                />
+              </View>
             </View>
           </View>
 
@@ -1742,16 +1783,20 @@ const styles = StyleSheet.create({
   },
   modalSaveBtn: {
     flex: 1,
+    minHeight: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FF7A00',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   modalSaveText: {
     color: '#080B0C',
-    fontWeight: '900',
-    fontSize: 13,
+    fontWeight: 'bold',
+    fontSize: 14,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 
   /* SWITCH ITEMS */
