@@ -44,3 +44,41 @@ gradle = gradle.replace(
 
 fs.writeFileSync(gradlePath, gradle, 'utf8');
 console.log('[configure-android-signing] build.gradle atualizado com signingConfigs.release com sucesso!');
+
+// 3. Garante permissões essenciais para o TaskManager e Background Location no AndroidManifest.xml
+const manifestPath = path.join(rootDir, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+if (fs.existsSync(manifestPath)) {
+  let manifest = fs.readFileSync(manifestPath, 'utf8');
+  const requiredPermissions = [
+    'android.permission.RECEIVE_BOOT_COMPLETED',
+    'android.permission.WAKE_LOCK',
+    'android.permission.FOREGROUND_SERVICE',
+    'android.permission.FOREGROUND_SERVICE_LOCATION',
+    'android.permission.ACCESS_FINE_LOCATION',
+    'android.permission.ACCESS_COARSE_LOCATION',
+    'android.permission.ACCESS_BACKGROUND_LOCATION',
+  ];
+
+  let addedCount = 0;
+  for (const perm of requiredPermissions) {
+    if (!manifest.includes(`android:name="${perm}"`)) {
+      manifest = manifest.replace(
+        '<manifest',
+        `<manifest>\n    <uses-permission android:name="${perm}"/>`
+      );
+      // Fallback se não substituiu na tag raiz
+      if (!manifest.includes(`android:name="${perm}"`)) {
+        manifest = manifest.replace(
+          '</manifest>',
+          `    <uses-permission android:name="${perm}"/>\n</manifest>`
+        );
+      }
+      addedCount++;
+    }
+  }
+
+  fs.writeFileSync(manifestPath, manifest, 'utf8');
+  console.log(`[configure-android-signing] AndroidManifest.xml verificado. (${addedCount} permissões injetadas)`);
+} else {
+  console.warn('[configure-android-signing] AndroidManifest.xml não encontrado para verificação de permissões.');
+}

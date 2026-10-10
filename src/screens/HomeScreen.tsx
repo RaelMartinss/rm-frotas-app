@@ -101,7 +101,7 @@ export function HomeScreen({
     if (activeTrip?.id && isTripInProgress) {
       locationService.startTracking(activeTrip.id).then((started) => {
         setGpsActive(started);
-      });
+      }).catch(() => {});
 
       unsubscribe = locationService.onLocationUpdate((loc) => {
         setGpsActive(true);
