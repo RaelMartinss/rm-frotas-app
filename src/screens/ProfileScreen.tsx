@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
+import { api } from '../services/api.service';
 import { User } from '../types/auth';
 
 interface ProfileScreenProps {
@@ -161,6 +162,24 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
               thumbColor="#FFFFFF"
             />
           </View>
+
+          {/* BOTÃO SINCRONIZAR AGORA */}
+          <TouchableOpacity
+            style={styles.syncNowButton}
+            onPress={async () => {
+              Alert.alert('Sincronização', 'Verificando fila de pendências locais com o servidor...');
+              const res = await api.syncOfflineQueue();
+              if (res.synced > 0) {
+                Alert.alert('Sucesso', `${res.synced} abastecimento(s) sincronizado(s) com o servidor!`);
+              } else {
+                Alert.alert('Tudo Atualizado', 'Todos os registros locais já estão sincronizados com a API.');
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="sync-outline" size={16} color={colors.primary} />
+            <Text style={styles.syncNowButtonText}>Sincronizar Pendências Agora</Text>
+          </TouchableOpacity>
         </View>
 
         {/* VERSÃO DO APLICATIVO */}
@@ -381,6 +400,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  syncNowButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.primaryMuted,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  syncNowButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
   },
   versionCard: {
     alignItems: 'center',

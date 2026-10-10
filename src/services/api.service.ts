@@ -1,16 +1,59 @@
 import { storage } from './storage.service';
 import { AuthResponse, LoginCredentials, User } from '../types/auth';
+import {
+  DriverPortalSummary,
+  DriverCurrentTrip,
+  DriverFuelDTO,
+  DriverHistoryItem,
+  DriverFuelHistoryItem,
+} from '../types/driver';
 
 export const API_BASE_URL = 'https://rm-frotas.duckdns.org/v1';
 
+const CACHE_KEYS = {
+  CURRENT_TRIP: 'rm_driver_current_trip',
+  HISTORY: 'rm_driver_history',
+  FUEL_HISTORY: 'rm_driver_fuel_history',
+  PENDING_FUEL_QUEUE: 'rm_pending_fuel_queue',
+};
+
 class ApiService {
-  private async getAuthHeader(): Promise<HeadersInit> {
+  private async getAuthHeader(customHeaders?: Record<string, string>): Promise<HeadersInit> {
     const token = await storage.getItem('rm_token');
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(customHeaders || {}),
     };
   }
+
+  /**
+   * Helper genérico para chamadas autenticadas com renovação automática de token
+   */
+  private async authenticatedFetch(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<Response> {
+    const url = `${API_BASE_URL}${endpoint}`;
+    const headers = await this.getAuthHeader(options.headers as Record<string, string>);
+
+    let response = await fetch(url, { ...options, headers });
+
+    // Se retornar 401 Unauthorized, tenta renovar o token e repetir a requisição
+    if (response.status === 401) {
+      const refreshed = await this.refresh();
+      if (refreshed) {
+        const retryHeaders = await this.getAuthHeader(options.headers as Record<string, string>);
+        response = await fetch(url, { ...options, headers: retryHeaders });
+      }
+    }
+
+    return response;
+  }
+
+  // ==========================================
+  // AUTENTICAÇÃO
+  // ==========================================
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -73,7 +116,6 @@ class ApiService {
     }
 
     try {
-      // Se a renovação silenciosa precisar do usuário anterior já cacheado:
       const user = JSON.parse(lastUserStr);
       await storage.setItem('rm_user', JSON.stringify(user));
       return user;
@@ -109,6 +151,253 @@ class ApiService {
       return JSON.parse(userStr);
     } catch {
       return null;
+    }
+  }
+
+  // ==========================================
+  // PORTAL DO MOTORISTA (SINCRONIZAÇÃO DA API)
+  // ==========================================
+
+  /**
+   * Obtém os dados completos da viagem ativa, motorista, pendências e contagens.
+   * Suporta cache offline com fallback automático caso esteja sem conexão.
+   */
+  async getCurrentTrip(): Promise<DriverPortalSummary> {
+    try {
+      const res = await this.authenticatedFetch('/driver-portal/current-trip');
+      if (res.ok) {
+        const data: DriverPortalSummary = await res.json();
+        await storage.setItem(CACHE_KEYS.CURRENT_TRIP, JSON.stringify(data));
+        return data;
+      }
+    } catch (err) {
+      // Ignora erro de rede e recorre ao cache abaixo
+    }
+
+    // Fallback Offline: carregar do cache local
+    const cached = await storage.getItem(CACHE_KEYS.CURRENT_TRIP);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as DriverPortalSummary;
+      } catch {}
+    }
+
+    throw new Error('Não foi possível carregar os dados da viagem atual.');
+  }
+
+  /**
+   * Inicia a viagem com 1 toque no celular
+   */
+  async startTrip(tripId: string): Promise<{ message: string; tripId: string; status: string }> {
+    const res = await this.authenticatedFetch('/driver-portal/start-trip', {
+      method: 'POST',
+      body: JSON.stringify({ tripId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao iniciar viagem.');
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Conclui a viagem informando o odômetro final
+   */
+  async completeTrip(
+    tripId: string,
+    currentKm?: number
+  ): Promise<{ message: string; tripId: string; status: string; completedAt: string }> {
+    const res = await this.authenticatedFetch('/driver-portal/complete-trip', {
+      method: 'POST',
+      body: JSON.stringify({ tripId, currentKm }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao concluir viagem.');
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Salva o checklist pré-viagem
+   */
+  async saveChecklist(tripId: string, checklist: any): Promise<{ message: string; tripId: string }> {
+    const res = await this.authenticatedFetch('/driver-portal/checklist', {
+      method: 'POST',
+      body: JSON.stringify({ tripId, checklist }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao salvar checklist.');
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Registra abastecimento na API com suporte a Idempotência e enfileiramento offline
+   */
+  async registerFuel(
+    dto: DriverFuelDTO,
+    idempotencyKey?: string
+  ): Promise<{ message: string; id: string; totalCost: number }> {
+    const key = idempotencyKey || `fuel_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    try {
+      const res = await this.authenticatedFetch('/driver-portal/fuel-record', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: JSON.stringify(dto),
+      });
+
+      if (res.ok) {
+        return res.json();
+      }
+
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Erro ao registrar abastecimento.');
+    } catch (error: any) {
+      // Se for erro de rede/offline, enfileira para sincronização posterior
+      if (error?.message?.includes('Network') || error?.message?.includes('Failed to fetch') || !error?.message) {
+        await this.queueOfflineFuel(dto, key);
+        return {
+          message: 'Abastecimento gravado localmente (Offline). Será sincronizado ao reconectar.',
+          id: `offline_${Date.now()}`,
+          totalCost: Number((dto.liters * dto.pricePerLiter).toFixed(2)),
+        };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Envia ou atualiza a foto do cupom fiscal do abastecimento
+   */
+  async updateFuelReceipt(
+    id: string,
+    receiptUrl: string,
+    notes?: string,
+    gasStation?: string
+  ): Promise<{ message: string; id: string; receiptUrl: string }> {
+    const res = await this.authenticatedFetch(`/driver-portal/fuel-records/${id}/receipt`, {
+      method: 'PATCH',
+      body: JSON.stringify({ receiptUrl, notes, gasStation }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao anexar comprovante.');
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Obtém histórico de viagens com fallback em cache local
+   */
+  async getHistory(): Promise<DriverHistoryItem[]> {
+    try {
+      const res = await this.authenticatedFetch('/driver-portal/history');
+      if (res.ok) {
+        const data: DriverHistoryItem[] = await res.json();
+        await storage.setItem(CACHE_KEYS.HISTORY, JSON.stringify(data));
+        return data;
+      }
+    } catch {}
+
+    const cached = await storage.getItem(CACHE_KEYS.HISTORY);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as DriverHistoryItem[];
+      } catch {}
+    }
+
+    return [];
+  }
+
+  /**
+   * Obtém histórico de abastecimentos com filtro opcional por pendência
+   */
+  async getFuelHistory(pendingReceiptOnly = false): Promise<DriverFuelHistoryItem[]> {
+    const query = pendingReceiptOnly ? '?pendingReceiptOnly=true' : '';
+    try {
+      const res = await this.authenticatedFetch(`/driver-portal/fuel-history${query}`);
+      if (res.ok) {
+        const data: DriverFuelHistoryItem[] = await res.json();
+        if (!pendingReceiptOnly) {
+          await storage.setItem(CACHE_KEYS.FUEL_HISTORY, JSON.stringify(data));
+        }
+        return data;
+      }
+    } catch {}
+
+    const cached = await storage.getItem(CACHE_KEYS.FUEL_HISTORY);
+    if (cached) {
+      try {
+        const list = JSON.parse(cached) as DriverFuelHistoryItem[];
+        return pendingReceiptOnly ? list.filter((item) => item.isPendingReceipt) : list;
+      } catch {}
+    }
+
+    return [];
+  }
+
+  /**
+   * Enfileiramento offline de abastecimento
+   */
+  private async queueOfflineFuel(dto: DriverFuelDTO, idempotencyKey: string): Promise<void> {
+    try {
+      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+      const queue = queueStr ? JSON.parse(queueStr) : [];
+      queue.push({ dto, idempotencyKey, timestamp: new Date().toISOString() });
+      await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(queue));
+    } catch {}
+  }
+
+  /**
+   * Sincroniza pendências salvas offline com o servidor
+   */
+  async syncOfflineQueue(): Promise<{ synced: number; failed: number }> {
+    try {
+      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+      if (!queueStr) return { synced: 0, failed: 0 };
+
+      const queue: Array<{ dto: DriverFuelDTO; idempotencyKey: string }> = JSON.parse(queueStr);
+      if (queue.length === 0) return { synced: 0, failed: 0 };
+
+      let synced = 0;
+      let failed = 0;
+      const remaining: typeof queue = [];
+
+      for (const item of queue) {
+        try {
+          const res = await this.authenticatedFetch('/driver-portal/fuel-record', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': item.idempotencyKey },
+            body: JSON.stringify(item.dto),
+          });
+
+          if (res.ok) {
+            synced++;
+          } else {
+            remaining.push(item);
+            failed++;
+          }
+        } catch {
+          remaining.push(item);
+          failed++;
+        }
+      }
+
+      await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(remaining));
+      return { synced, failed };
+    } catch {
+      return { synced: 0, failed: 0 };
     }
   }
 }

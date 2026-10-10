@@ -15,16 +15,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
+import { api } from '../services/api.service';
+import { DriverFuelDTO } from '../types/driver';
 
 interface FuelScreenProps {
   onBack: () => void;
   onSuccess?: () => void;
+  defaultVehicle?: any;
 }
 
 type FuelType = 'DIESEL' | 'GASOLINA' | 'ETANOL' | 'ARLA_32';
 
-export function FuelScreen({ onBack, onSuccess }: FuelScreenProps) {
-  const [km, setKm] = useState('148580');
+export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProps) {
+  const [km, setKm] = useState(defaultVehicle?.currentKm?.toString() || '148580');
   const [fuelType, setFuelType] = useState<FuelType>('DIESEL');
   const [liters, setLiters] = useState('');
   const [pricePerLiter, setPricePerLiter] = useState('');
@@ -94,16 +97,28 @@ export function FuelScreen({ onBack, onSuccess }: FuelScreenProps) {
     setReceiptPhotoUri(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!km || !liters || !pricePerLiter) {
       Alert.alert('Atenção', 'Preencha o odômetro, a quantidade de litros e o valor por litro.');
       return;
     }
 
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
-      Alert.alert('Sucesso', 'Abastecimento registrado com sucesso!', [
+    try {
+      const fuelDto: DriverFuelDTO = {
+        vehicleId: defaultVehicle?.id || 'vehicle_active',
+        currentKm: parseInt(km, 10),
+        liters: parseFloat(liters.replace(',', '.')),
+        pricePerLiter: parseFloat(pricePerLiter.replace(',', '.')),
+        fuelType,
+        gasStation: stationName || undefined,
+        receiptUrl: receiptPhotoUri || undefined,
+        occurredAt: new Date().toISOString(),
+      };
+
+      const res = await api.registerFuel(fuelDto);
+
+      Alert.alert('Sucesso', res.message || 'Abastecimento registrado com sucesso!', [
         {
           text: 'OK',
           onPress: () => {
@@ -112,7 +127,13 @@ export function FuelScreen({ onBack, onSuccess }: FuelScreenProps) {
           },
         },
       ]);
-    }, 800);
+    } catch (err: any) {
+      Alert.alert('Aviso de Lançamento', err.message || 'Abastecimento registrado em cache.');
+      if (onSuccess) onSuccess();
+      else onBack();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

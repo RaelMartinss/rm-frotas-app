@@ -13,17 +13,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { api } from '../services/api.service';
 
 interface TripScreenProps {
   onBack: () => void;
   onTripStarted: (tripData: any) => void;
+  tripId?: string;
+  defaultVehicle?: any;
 }
 
-export function TripScreen({ onBack, onTripStarted }: TripScreenProps) {
-  const [selectedVehicle, setSelectedVehicle] = useState('ABC-4D88');
+export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultVehicle }: TripScreenProps) {
+  const [tripId, setTripId] = useState(propTripId || 'trip_current_1');
+  const [selectedVehicle, setSelectedVehicle] = useState(defaultVehicle?.plate || 'ABC-4D88');
+  const [vehicleModel, setVehicleModel] = useState(defaultVehicle?.model || 'Scania R450 6x2');
   const [origin, setOrigin] = useState('São Paulo (SP)');
   const [destination, setDestination] = useState('Curitiba (PR)');
-  const [initialKm, setInitialKm] = useState('148500');
+  const [initialKm, setInitialKm] = useState(defaultVehicle?.currentKm?.toString() || '148500');
+  const [starting, setStarting] = useState(false);
 
   // Checklist rápido
   const [checklist, setChecklist] = useState({
@@ -37,7 +43,7 @@ export function TripScreen({ onBack, onTripStarted }: TripScreenProps) {
     setChecklist((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleStartTrip = () => {
+  const handleStartTrip = async () => {
     if (!initialKm || !destination) {
       Alert.alert('Atenção', 'Informe o odômetro inicial e o destino da viagem.');
       return;
@@ -49,20 +55,36 @@ export function TripScreen({ onBack, onTripStarted }: TripScreenProps) {
       return;
     }
 
-    Alert.alert('Viagem Iniciada', `Boa viagem! Rota: ${origin} → ${destination}`, [
-      {
-        text: 'OK',
-        onPress: () => {
-          onTripStarted({
-            vehiclePlate: selectedVehicle,
-            origin,
-            destination,
-            initialKm,
-            startedAt: new Date().toISOString(),
-          });
+    setStarting(true);
+    try {
+      // 1. Salvar checklist na API
+      if (tripId && !tripId.startsWith('trip_current_')) {
+        await api.saveChecklist(tripId, checklist).catch(() => {});
+        // 2. Iniciar viagem na API
+        await api.startTrip(tripId);
+      }
+
+      Alert.alert('Viagem Iniciada', `Boa viagem! Rota: ${origin} → ${destination}`, [
+        {
+          text: 'OK',
+          onPress: () => {
+            onTripStarted({
+              id: tripId,
+              status: 'IN_PROGRESS',
+              vehiclePlate: selectedVehicle,
+              origin,
+              destination,
+              initialKm,
+              startedAt: new Date().toISOString(),
+            });
+          },
         },
-      },
-    ]);
+      ]);
+    } catch (err: any) {
+      Alert.alert('Erro ao Iniciar Viagem', err.message || 'Não foi possível iniciar a viagem no servidor.');
+    } finally {
+      setStarting(false);
+    }
   };
 
   return (

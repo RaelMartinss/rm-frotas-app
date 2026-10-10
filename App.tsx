@@ -90,6 +90,7 @@ export default function App() {
               onNavigateToHistory={() => setActiveTab('history')}
               onNavigateToProfile={() => setActiveTab('profile')}
               activeTrip={activeTrip}
+              onTripCompleted={() => setActiveTrip(null)}
             />
           )}
         </View>

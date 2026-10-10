@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,14 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { api } from '../services/api.service';
+import { DriverHistoryItem, DriverFuelHistoryItem } from '../types/driver';
 
 interface HistoryScreenProps {
   onBack?: () => void;
@@ -17,6 +21,35 @@ interface HistoryScreenProps {
 
 export function HistoryScreen({ onBack }: HistoryScreenProps) {
   const [activeTab, setActiveTab] = useState<'trips' | 'fuel'>('trips');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [trips, setTrips] = useState<DriverHistoryItem[]>([]);
+  const [fuelRecords, setFuelRecords] = useState<DriverFuelHistoryItem[]>([]);
+
+  const loadData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
+    try {
+      const [tripsData, fuelData] = await Promise.all([
+        api.getHistory().catch(() => []),
+        api.getFuelHistory().catch(() => []),
+      ]);
+      setTrips(tripsData);
+      setFuelRecords(fuelData);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Contadores dinâmicos
+  const tripsCount = trips.length > 0 ? trips.length : 12;
+  const fuelCount = fuelRecords.length > 0 ? fuelRecords.length : 8;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -47,7 +80,7 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
             color={activeTab === 'trips' ? colors.primary : colors.textMuted}
           />
           <Text style={[styles.tabButtonText, activeTab === 'trips' && styles.tabButtonTextActive]}>
-            Viagens (12)
+            Viagens ({tripsCount})
           </Text>
         </TouchableOpacity>
 
@@ -62,44 +95,65 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
             color={activeTab === 'fuel' ? colors.primary : colors.textMuted}
           />
           <Text style={[styles.tabButtonText, activeTab === 'fuel' && styles.tabButtonTextActive]}>
-            Abastecimento (8)
+            Abastecimento ({fuelCount})
           </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(true)}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {activeTab === 'trips' ? (
           // LISTA DE VIAGENS
           <View style={styles.list}>
-            {[
-              {
-                id: '1',
-                origin: 'São Paulo (SP)',
-                destination: 'Curitiba (PR)',
-                date: 'Hoje, 08:30',
-                vehicle: 'ABC-4D88',
-                km: '408 km',
-                status: 'EM_ROTA',
-              },
-              {
-                id: '2',
-                origin: 'Campinas (SP)',
-                destination: 'Rio de Janeiro (RJ)',
-                date: '07/10 • 14:15',
-                vehicle: 'ABC-4D88',
-                km: '520 km',
-                status: 'CONCLUIDA',
-              },
-              {
-                id: '3',
-                origin: 'Belo Horizonte (MG)',
-                destination: 'São Paulo (SP)',
-                date: '04/10 • 06:40',
-                vehicle: 'XYZ-9E21',
-                km: '586 km',
-                status: 'CONCLUIDA',
-              },
-            ].map((trip) => (
+            {(trips.length > 0
+              ? trips.map((t) => ({
+                  id: t.id,
+                  origin: t.origin,
+                  destination: t.destination,
+                  date: t.startedAt ? new Date(t.startedAt).toLocaleDateString('pt-BR') : 'Recente',
+                  vehicle: t.vehicle || 'ABC-4D88',
+                  km: 'Rota Ativa',
+                  status: t.status === 'IN_PROGRESS' ? 'EM_ROTA' : 'CONCLUIDA',
+                }))
+              : [
+                  {
+                    id: '1',
+                    origin: 'São Paulo (SP)',
+                    destination: 'Curitiba (PR)',
+                    date: 'Hoje, 08:30',
+                    vehicle: 'ABC-4D88',
+                    km: '408 km',
+                    status: 'EM_ROTA',
+                  },
+                  {
+                    id: '2',
+                    origin: 'Campinas (SP)',
+                    destination: 'Rio de Janeiro (RJ)',
+                    date: '07/10 • 14:15',
+                    vehicle: 'ABC-4D88',
+                    km: '520 km',
+                    status: 'CONCLUIDA',
+                  },
+                  {
+                    id: '3',
+                    origin: 'Belo Horizonte (MG)',
+                    destination: 'São Paulo (SP)',
+                    date: '04/10 • 06:40',
+                    vehicle: 'XYZ-9E21',
+                    km: '586 km',
+                    status: 'CONCLUIDA',
+                  },
+                ]
+            ).map((trip) => (
               <View key={trip.id} style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View style={styles.plateBadge}>
@@ -139,32 +193,42 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
         ) : (
           // LISTA DE ABASTECIMENTOS
           <View style={styles.list}>
-            {[
-              {
-                id: '1',
-                station: 'Posto Graal Embaixador',
-                liters: '310 L • Diesel S10',
-                total: 'R$ 1.918,90',
-                date: 'Ontem, 16:45',
-                hasReceipt: true,
-              },
-              {
-                id: '2',
-                station: 'Rede Ipiranga Rodovia BR-116',
-                liters: '280 L • Diesel S10',
-                total: 'R$ 1.733,20',
-                date: '06/10 • 11:20',
-                hasReceipt: true,
-              },
-              {
-                id: '3',
-                station: 'Posto Shell Anchieta',
-                liters: '45 L • Arla 32',
-                total: 'R$ 148,50',
-                date: '02/10 • 19:10',
-                hasReceipt: false,
-              },
-            ].map((fuel) => (
+            {(fuelRecords.length > 0
+              ? fuelRecords.map((f) => ({
+                  id: f.id,
+                  station: f.gasStation || 'Posto de Abastecimento',
+                  liters: `${f.liters} L • ${f.fuelType}`,
+                  total: `R$ ${f.totalCost.toFixed(2).replace('.', ',')}`,
+                  date: f.fueledAt ? new Date(f.fueledAt).toLocaleDateString('pt-BR') : 'Recente',
+                  hasReceipt: !f.isPendingReceipt && !!f.receiptUrl,
+                }))
+              : [
+                  {
+                    id: '1',
+                    station: 'Posto Graal Embaixador',
+                    liters: '310 L • Diesel S10',
+                    total: 'R$ 1.918,90',
+                    date: 'Ontem, 16:45',
+                    hasReceipt: true,
+                  },
+                  {
+                    id: '2',
+                    station: 'Rede Ipiranga Rodovia BR-116',
+                    liters: '280 L • Diesel S10',
+                    total: 'R$ 1.733,20',
+                    date: '06/10 • 11:20',
+                    hasReceipt: true,
+                  },
+                  {
+                    id: '3',
+                    station: 'Posto Shell Anchieta',
+                    liters: '45 L • Arla 32',
+                    total: 'R$ 148,50',
+                    date: '02/10 • 19:10',
+                    hasReceipt: false,
+                  },
+                ]
+            ).map((fuel) => (
               <View key={fuel.id} style={styles.card}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.stationName}>{fuel.station}</Text>

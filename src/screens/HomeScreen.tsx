@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,16 @@ import {
   ScrollView,
   StatusBar,
   Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
+import { api } from '../services/api.service';
 import { User } from '../types/auth';
+import { DriverPortalSummary, DriverCurrentTrip } from '../types/driver';
 
 interface HomeScreenProps {
   user: User;
@@ -22,6 +26,7 @@ interface HomeScreenProps {
   onNavigateToHistory: () => void;
   onNavigateToProfile: () => void;
   activeTrip?: any;
+  onTripCompleted?: () => void;
 }
 
 export function HomeScreen({
@@ -31,14 +36,86 @@ export function HomeScreen({
   onNavigateToTrip,
   onNavigateToHistory,
   onNavigateToProfile,
-  activeTrip,
+  activeTrip: propActiveTrip,
+  onTripCompleted,
 }: HomeScreenProps) {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [pendingReceipts, setPendingReceipts] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [summary, setSummary] = useState<DriverPortalSummary | null>(null);
+  const [completing, setCompleting] = useState(false);
+
+  const loadData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
+    try {
+      const data = await api.getCurrentTrip();
+      setSummary(data);
+    } catch {
+      // Mantém estado anterior em caso de erro silencioso
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     biometricService.isAvailable().then(setBiometricAvailable);
-  }, []);
+    loadData();
+  }, [loadData]);
+
+  const activeTrip = propActiveTrip || summary?.trip;
+  const isTripInProgress = activeTrip?.status === 'IN_PROGRESS';
+  const pendingReceipts = summary?.pendingReceiptsCount ?? 1;
+
+  const formatCnhDate = (rawDate?: string) => {
+    if (!rawDate) return '18/11/2028';
+    try {
+      const parts = rawDate.split('T')[0].split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('pt-BR');
+      }
+      return '18/11/2028';
+    } catch {
+      return '18/11/2028';
+    }
+  };
+
+  const handleTripAction = () => {
+    if (isTripInProgress) {
+      Alert.alert(
+        'Concluir Viagem',
+        `Deseja finalizar a viagem para ${activeTrip?.destinationCity || 'Curitiba'}? O veículo será liberado para a frota.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Sim, Concluir',
+            onPress: async () => {
+              if (!activeTrip?.id) return;
+              setCompleting(true);
+              try {
+                await api.completeTrip(activeTrip.id);
+                Alert.alert('Viagem Concluída', 'O veículo foi liberado com sucesso!');
+                if (onTripCompleted) onTripCompleted();
+                loadData(true);
+              } catch (err: any) {
+                Alert.alert('Erro', err.message || 'Não foi possível concluir a viagem.');
+              } finally {
+                setCompleting(false);
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      onNavigateToTrip();
+    }
+  };
 
   const handleSOS = () => {
     Alert.alert(
@@ -114,7 +191,17 @@ export function HomeScreen({
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadData(true)}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {/* BANNER PROATIVO DE CNH */}
         <View style={styles.cnhBanner}>
           <View style={styles.cnhBannerLeft}>
@@ -122,8 +209,14 @@ export function HomeScreen({
               <Ionicons name="shield-checkmark" size={18} color="#34D399" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.cnhTitle}>CNH Regularizada • Categoria E</Text>
-              <Text style={styles.cnhDesc}>Validade até 18/11/2028. Liberação total para viagem.</Text>
+              <Text style={styles.cnhTitle}>
+                {summary?.driver
+                  ? `CNH Regularizada • Categoria ${summary.driver.cnhCategory || 'E'}`
+                  : 'CNH Regularizada • Categoria E'}
+              </Text>
+              <Text style={styles.cnhDesc}>
+                {`Validade até ${formatCnhDate(summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate)}. Liberação total para viagem.`}
+              </Text>
             </View>
           </View>
         </View>
@@ -136,7 +229,11 @@ export function HomeScreen({
                 <MaterialCommunityIcons name="gas-station" size={18} color="#FBBF24" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.receiptTitle}>1 cupom fiscal pendente</Text>
+                <Text style={styles.receiptTitle}>
+                  {pendingReceipts === 1
+                    ? '1 cupom fiscal pendente'
+                    : `${pendingReceipts} cupons fiscais pendentes`}
+                </Text>
                 <Text style={styles.receiptDesc}>Tire a foto para regularizar seu abastecimento.</Text>
               </View>
             </View>
@@ -156,7 +253,7 @@ export function HomeScreen({
             <View style={styles.tripBadge}>
               <View style={styles.badgeDot} />
               <Text style={styles.badgeText}>
-                {activeTrip ? 'EM ROTA' : 'PROGRAMADA'}
+                {isTripInProgress ? 'EM ROTA' : 'PROGRAMADA'}
               </Text>
             </View>
 
@@ -169,11 +266,15 @@ export function HomeScreen({
           {/* Rota Origem → Destino */}
           <View style={styles.routeRow}>
             <Text style={styles.routeCity}>
-              {activeTrip?.origin || 'São Paulo (SP)'}
+              {activeTrip?.originCity
+                ? `${activeTrip.originCity} (${activeTrip.originState || 'SP'})`
+                : activeTrip?.origin || 'São Paulo (SP)'}
             </Text>
             <Ionicons name="arrow-forward" size={18} color={colors.primary} />
             <Text style={styles.routeCity}>
-              {activeTrip?.destination || 'Curitiba (PR)'}
+              {activeTrip?.destinationCity
+                ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
+                : activeTrip?.destination || 'Curitiba (PR)'}
             </Text>
           </View>
 
@@ -202,20 +303,29 @@ export function HomeScreen({
 
           {/* Botão de Iniciar/Concluir Viagem */}
           <TouchableOpacity
-            style={styles.startTripButton}
-            onPress={onNavigateToTrip}
+            style={[styles.startTripButton, completing && { opacity: 0.7 }]}
+            onPress={handleTripAction}
+            disabled={completing}
             activeOpacity={0.85}
           >
             <View style={styles.startTripButtonInner}>
               <View style={styles.playIconBadge}>
-                <Ionicons
-                  name={activeTrip ? 'checkmark' : 'play'}
-                  size={14}
-                  color={colors.primary}
-                />
+                {completing ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Ionicons
+                    name={isTripInProgress ? 'checkmark' : 'play'}
+                    size={14}
+                    color={colors.primary}
+                  />
+                )}
               </View>
               <Text style={styles.startTripButtonText}>
-                {activeTrip ? 'Concluir Viagem' : 'Iniciar Viagem'}
+                {completing
+                  ? 'Concluindo...'
+                  : isTripInProgress
+                  ? 'Concluir Viagem'
+                  : 'Iniciar Viagem'}
               </Text>
             </View>
             <Ionicons name="arrow-forward" size={18} color="#080B0C" />
