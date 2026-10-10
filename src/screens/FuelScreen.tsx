@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,13 +27,45 @@ interface FuelScreenProps {
 type FuelType = 'DIESEL' | 'GASOLINA' | 'ETANOL' | 'ARLA_32';
 
 export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProps) {
-  const [km, setKm] = useState(defaultVehicle?.currentKm?.toString() || '148580');
+  const [vehicle, setVehicle] = useState<any>(defaultVehicle || null);
+  const [km, setKm] = useState(defaultVehicle?.currentKm != null ? String(defaultVehicle.currentKm) : '');
   const [fuelType, setFuelType] = useState<FuelType>('DIESEL');
-  const [liters, setLiters] = useState('');
-  const [pricePerLiter, setPricePerLiter] = useState('');
-  const [stationName, setStationName] = useState('');
+  const [liters, setLiters] = useState('320.00');
+  const [pricePerLiter, setPricePerLiter] = useState('6.19');
+  const [stationName, setStationName] = useState('Posto Graal Embaixador');
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
+  const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Busca dados dinâmicos do veículo da viagem ativa caso não tenham sido passados
+  useEffect(() => {
+    if (defaultVehicle) {
+      setVehicle(defaultVehicle);
+      if (defaultVehicle.currentKm != null && !km) {
+        setKm(String(defaultVehicle.currentKm));
+      }
+      return;
+    }
+
+    let isMounted = true;
+    api
+      .getCurrentTrip()
+      .then((summary) => {
+        if (!isMounted) return;
+        const currentVeh = summary?.trip?.vehicle;
+        if (currentVeh) {
+          setVehicle(currentVeh);
+          if (currentVeh.currentKm != null) {
+            setKm(String(currentVeh.currentKm));
+          }
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      isMounted = false;
+    };
+  }, [defaultVehicle]);
 
   // Cálculo automático do total
   const total =
@@ -51,10 +83,15 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.7,
+        base64: true,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setReceiptPhotoUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setReceiptPhotoUri(asset.uri);
+        if (asset.base64) {
+          setReceiptBase64(`data:image/jpeg;base64,${asset.base64}`);
+        }
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível abrir a câmera.');
@@ -71,10 +108,15 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.7,
+        base64: true,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setReceiptPhotoUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setReceiptPhotoUri(asset.uri);
+        if (asset.base64) {
+          setReceiptBase64(`data:image/jpeg;base64,${asset.base64}`);
+        }
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível abrir a galeria.');
@@ -95,6 +137,7 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
 
   const handleRemovePhoto = () => {
     setReceiptPhotoUri(null);
+    setReceiptBase64(null);
   };
 
   const handleSave = async () => {
@@ -103,16 +146,39 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
       return;
     }
 
+    const parsedKm = parseInt(km.replace(/\D/g, ''), 10);
+    if (isNaN(parsedKm) || parsedKm <= 0) {
+      Alert.alert('Atenção', 'Informe um valor válido para o odômetro.');
+      return;
+    }
+
+    if (vehicle?.currentKm != null && parsedKm < vehicle.currentKm) {
+      Alert.alert(
+        'Odômetro Menor que o Atual',
+        `O odômetro informado (${parsedKm.toLocaleString('pt-BR')} km) não pode ser inferior ao odômetro atual do veículo (${Number(vehicle.currentKm).toLocaleString('pt-BR')} km).`
+      );
+      return;
+    }
+
+    const parsedLiters = parseFloat(liters.replace(',', '.'));
+    const parsedPrice = parseFloat(pricePerLiter.replace(',', '.'));
+
+    if (isNaN(parsedLiters) || parsedLiters <= 0 || isNaN(parsedPrice) || parsedPrice <= 0) {
+      Alert.alert('Atenção', 'Informe valores numéricos válidos para litros e preço.');
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const targetVehicleId = vehicle?.id || defaultVehicle?.id || '74f74c7a-254b-477f-b715-734ee09f9a27';
       const fuelDto: DriverFuelDTO = {
-        vehicleId: defaultVehicle?.id || 'vehicle_active',
-        currentKm: parseInt(km, 10),
-        liters: parseFloat(liters.replace(',', '.')),
-        pricePerLiter: parseFloat(pricePerLiter.replace(',', '.')),
+        vehicleId: targetVehicleId,
+        currentKm: parsedKm,
+        liters: parsedLiters,
+        pricePerLiter: parsedPrice,
         fuelType,
-        gasStation: stationName || undefined,
-        receiptUrl: receiptPhotoUri || undefined,
+        gasStation: stationName.trim() || undefined,
+        receiptUrl: receiptBase64 || receiptPhotoUri || undefined,
         occurredAt: new Date().toISOString(),
       };
 
@@ -166,14 +232,19 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
           <View style={{ flex: 1 }}>
             <View style={styles.vehiclePlateRow}>
               <View style={styles.plateBadge}>
-                <Text style={styles.plateText}>ABC-4D88</Text>
+                <Text style={styles.plateText}>{vehicle?.plate || vehicle?.licensePlate || 'BRA2E19'}</Text>
               </View>
-              <Text style={styles.vehicleModelText}>Scania R450 6x2</Text>
+              <Text style={styles.vehicleModelText}>
+                {vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}`.trim() : 'Volvo FH 540'}
+              </Text>
             </View>
             <View style={styles.odometerRow}>
               <Ionicons name="speedometer-outline" size={13} color={colors.textMuted} />
               <Text style={styles.odometerText}>
-                Odômetro atual: <Text style={styles.odometerValue}>148.500 km</Text>
+                Odômetro atual:{' '}
+                <Text style={styles.odometerValue}>
+                  {vehicle?.currentKm != null ? Number(vehicle.currentKm).toLocaleString('pt-BR') : '148.320'} km
+                </Text>
               </Text>
             </View>
           </View>
@@ -195,7 +266,7 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
               value={km}
               onChangeText={setKm}
               keyboardType="numeric"
-              placeholder="ex: 148580"
+              placeholder={`ex: ${vehicle?.currentKm || '148320'}`}
               placeholderTextColor={colors.textDim}
             />
             <Text style={styles.inputSuffix}>KM</Text>

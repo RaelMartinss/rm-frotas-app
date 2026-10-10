@@ -29,6 +29,9 @@ export default function App() {
         if (storedUser) {
           setCurrentUser(storedUser);
           api.refresh().catch(() => {});
+          api.getCurrentTrip().then((s) => {
+            if (s?.trip) setActiveTrip(s.trip);
+          }).catch(() => {});
         }
       } catch {
       } finally {
@@ -74,7 +77,16 @@ export default function App() {
         {/* CORPO DA TELA CONFORME ABA / MODAL ATIVO */}
         <View style={styles.screenBody}>
           {activeModal === 'fuel' ? (
-            <FuelScreen onBack={() => setActiveModal(null)} onSuccess={() => setActiveModal(null)} />
+            <FuelScreen
+              onBack={() => setActiveModal(null)}
+              onSuccess={() => {
+                setActiveModal(null);
+                api.getCurrentTrip().then((s) => {
+                  if (s?.trip) setActiveTrip(s.trip);
+                }).catch(() => {});
+              }}
+              defaultVehicle={activeTrip?.vehicle}
+            />
           ) : activeModal === 'trip' ? (
             <TripScreen onBack={() => setActiveModal(null)} onTripStarted={handleTripStarted} />
           ) : activeTab === 'history' ? (
