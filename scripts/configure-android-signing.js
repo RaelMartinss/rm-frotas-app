@@ -82,3 +82,29 @@ if (fs.existsSync(manifestPath)) {
 } else {
   console.warn('[configure-android-signing] AndroidManifest.xml não encontrado para verificação de permissões.');
 }
+
+// 4. Otimiza desempenho de compilação no gradle.properties (reduz tempo de build no CI)
+const gradlePropsPath = path.join(rootDir, 'android', 'gradle.properties');
+if (fs.existsSync(gradlePropsPath)) {
+  let props = fs.readFileSync(gradlePropsPath, 'utf8');
+  const perfSettings = {
+    'org.gradle.jvmargs': '-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError',
+    'org.gradle.parallel': 'true',
+    'org.gradle.caching': 'true',
+    'org.gradle.vfs.watch': 'true',
+    'android.enableR8.fullMode': 'true',
+  };
+
+  for (const [key, val] of Object.entries(perfSettings)) {
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    if (regex.test(props)) {
+      props = props.replace(regex, `${key}=${val}`);
+    } else {
+      props += `\n${key}=${val}`;
+    }
+  }
+
+  fs.writeFileSync(gradlePropsPath, props, 'utf8');
+  console.log('[configure-android-signing] gradle.properties configurado com flags de alta performance (4GB RAM, parallel, build-cache).');
+}
+

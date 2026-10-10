@@ -9,12 +9,14 @@ import {
   Alert,
   RefreshControl,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
+import { storage } from '../services/storage.service';
 import { locationService } from '../services/location.service';
 import { appUpdateService, UpdateInfo } from '../services/app-update.service';
 import { navigationService } from '../services/navigation.service';
@@ -59,6 +61,7 @@ export function HomeScreen({
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [driverPhoto, setDriverPhoto] = useState<string | null>(user.photoUrl || null);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -67,6 +70,10 @@ export function HomeScreen({
     try {
       const data = await api.getCurrentTrip();
       setSummary(data);
+      if (data?.driver?.photoUrl) {
+        setDriverPhoto(data.driver.photoUrl);
+        await storage.setItem('rm_driver_photo', data.driver.photoUrl);
+      }
     } catch {
       // Mantém estado anterior em caso de erro silencioso
     } finally {
@@ -77,6 +84,9 @@ export function HomeScreen({
 
   useEffect(() => {
     biometricService.isAvailable().then(setBiometricAvailable);
+    storage.getItem('rm_driver_photo').then((cached) => {
+      if (cached) setDriverPhoto(cached);
+    });
     loadData();
 
     // Inscreve na central de notificações
@@ -253,10 +263,18 @@ export function HomeScreen({
           onPress={onNavigateToProfile}
           activeOpacity={0.8}
         >
-          {/* Avatar com fundo laranja translúcido */}
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{driverInitials}</Text>
-          </View>
+          {/* Avatar com foto do condutor ou iniciais */}
+          {driverPhoto ? (
+            <Image
+              source={{ uri: driverPhoto }}
+              style={styles.avatarPhoto}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{driverInitials}</Text>
+            </View>
+          )}
           <View style={styles.driverInfoCol}>
             <Text style={styles.driverName} numberOfLines={1}>
               {user.name || 'Rael Martins'}
@@ -656,6 +674,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     flex: 1,
+  },
+  avatarPhoto: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
   },
   avatarCircle: {
     width: 44,

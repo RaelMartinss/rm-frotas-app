@@ -56,7 +56,7 @@ jobs:
         working-directory: ./android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --parallel --build-cache --no-daemon
 
       - name: Prepare APK Asset
         run: |

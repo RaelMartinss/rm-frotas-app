@@ -60,10 +60,14 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
     storage.getItem(`rm_driver_phone_${user.id}`).then((p) => {
       if (p) setPhone(p);
     });
+    storage.getItem('rm_driver_photo').then((cached) => {
+      if (cached) setPhotoUrl(cached);
+    });
 
     api.getCurrentTrip().then((sum) => {
       if (sum?.driver?.photoUrl) {
         setPhotoUrl(sum.driver.photoUrl);
+        storage.setItem('rm_driver_photo', sum.driver.photoUrl);
       }
     }).catch(() => {});
   }, [user.id]);
@@ -141,6 +145,7 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
         try {
           await api.updateProfilePhoto(base64Uri);
           setPhotoUrl(base64Uri);
+          await storage.setItem('rm_driver_photo', base64Uri);
           Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
         } catch (err: any) {
           Alert.alert('Erro', err.message || 'Não foi possível salvar a foto no servidor.');
@@ -158,6 +163,7 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
     try {
       await api.updateProfilePhoto(null);
       setPhotoUrl(null);
+      await storage.removeItem('rm_driver_photo');
       Alert.alert('Sucesso', 'Foto de perfil removida.');
     } catch (err: any) {
       Alert.alert('Erro', err.message || 'Falha ao remover foto.');

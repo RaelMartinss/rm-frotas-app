@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   tenantId?: string;
   mustChangePassword?: boolean;
+  photoUrl?: string;
 }
 
 export interface AuthResponse {
