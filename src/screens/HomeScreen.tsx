@@ -16,6 +16,7 @@ import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
 import { locationService } from '../services/location.service';
+import { appUpdateService, UpdateInfo } from '../services/app-update.service';
 import { User } from '../types/auth';
 import { DriverPortalSummary, DriverCurrentTrip } from '../types/driver';
 
@@ -45,6 +46,8 @@ export function HomeScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<DriverPortalSummary | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -64,6 +67,17 @@ export function HomeScreen({
   useEffect(() => {
     biometricService.isAvailable().then(setBiometricAvailable);
     loadData();
+
+    // Verificação proativa de nova versão no GitHub Releases
+    const timer = setTimeout(() => {
+      appUpdateService.checkForUpdates().then((info) => {
+        if (info.hasUpdate) {
+          setUpdateInfo(info);
+        }
+      });
+    }, 2500);
+
+    return () => clearTimeout(timer);
   }, [loadData]);
 
   const activeTrip = propActiveTrip || summary?.trip;
@@ -243,6 +257,43 @@ export function HomeScreen({
           />
         }
       >
+        {/* BANNER PROATIVO DE NOVA VERSÃO DISPONÍVEL */}
+        {updateInfo && !updateDismissed && (
+          <View style={styles.updateBanner}>
+            <View style={styles.updateBannerTop}>
+              <View style={styles.updateIconBox}>
+                <Ionicons name="cloud-download-outline" size={20} color="#FF7A00" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.updateBadgeRow}>
+                  <Text style={styles.updateBadgeText}>ATUALIZAÇÃO DISPONÍVEL</Text>
+                  <Text style={styles.updateVersionTag}>v{updateInfo.latestVersion}</Text>
+                </View>
+                <Text style={styles.updateDesc}>
+                  Uma nova versão do RM Frotas foi publicada com melhorias e correções.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.updateActionRow}>
+              <TouchableOpacity
+                style={styles.updateDismissButton}
+                onPress={() => setUpdateDismissed(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.updateDismissText}>Depois</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.updateInstallButton}
+                onPress={() => appUpdateService.downloadAndInstall(updateInfo.downloadUrl)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="download-outline" size={15} color="#080B0C" />
+                <Text style={styles.updateInstallText}>Instalar Atualização</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* BANNER PROATIVO DE CNH (Apenas exibido se estiver vencendo ou vencida) */}
         {shouldShowCnhAlert && (
           <View
@@ -822,4 +873,87 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     lineHeight: 15,
   },
+  updateBanner: {
+    backgroundColor: '#12171B',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.35)',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    gap: 12,
+  },
+  updateBannerTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  updateIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 122, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  updateBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FF7A00',
+    letterSpacing: 0.5,
+  },
+  updateVersionTag: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#CBD5E1',
+    backgroundColor: '#1F2937',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  updateDesc: {
+    fontSize: 12,
+    color: '#94A3B8',
+    lineHeight: 16,
+  },
+  updateActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  updateDismissButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  updateDismissText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  updateInstallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FF7A00',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  updateInstallText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#080B0C',
+  },
 });
+

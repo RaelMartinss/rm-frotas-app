@@ -25,7 +25,8 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
-      ]
+      ],
+      "versionCode": 1
     },
     "plugins": [
       "expo-secure-store",

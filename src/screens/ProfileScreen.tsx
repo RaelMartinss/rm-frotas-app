@@ -14,6 +14,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
+import { appUpdateService, CURRENT_APP_VERSION } from '../services/app-update.service';
 import { User } from '../types/auth';
 
 interface ProfileScreenProps {
@@ -24,6 +25,7 @@ interface ProfileScreenProps {
 export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
   const [biometricsEnabled, setBiometricsEnabled] = useState(true);
   const [hasBiometricHardware, setHasBiometricHardware] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   useEffect(() => {
     biometricService.isAvailable().then(setHasBiometricHardware);
@@ -44,6 +46,35 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Sair', style: 'destructive', onPress: onLogout },
     ]);
+  };
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const res = await appUpdateService.checkForUpdates();
+      if (res.hasUpdate) {
+        Alert.alert(
+          `Nova Versão v${res.latestVersion} Disponível!`,
+          `Sua versão atual é v${res.currentVersion}.\n\nNotas da versão:\n${res.releaseNotes}\n\nDeseja baixar a atualização agora?`,
+          [
+            { text: 'Mais tarde', style: 'cancel' },
+            {
+              text: 'Atualizar Agora',
+              onPress: () => appUpdateService.downloadAndInstall(res.downloadUrl),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Aplicativo Atualizado',
+          `Você já está utilizando a versão mais recente homologada (v${res.currentVersion}).`
+        );
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível verificar atualizações no momento.');
+    } finally {
+      setCheckingUpdate(false);
+    }
   };
 
   return (
@@ -182,9 +213,42 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
           </TouchableOpacity>
         </View>
 
-        {/* VERSÃO DO APLICATIVO */}
+        {/* ATUALIZAÇÕES DO APLICATIVO */}
+        <View style={styles.sectionCard}>
+          <View style={styles.cardHeader}>
+            <View style={styles.labelWithIcon}>
+              <Ionicons name="cloud-download-outline" size={16} color={colors.primary} />
+              <Text style={styles.sectionLabel}>ATUALIZAÇÕES DO APLICATIVO</Text>
+            </View>
+            <View style={styles.versionBadge}>
+              <Text style={styles.versionBadgeText}>v{CURRENT_APP_VERSION}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.updateCardDesc}>
+            Mantenha seu aplicativo na versão mais recente homologada para ter acesso a melhorias contínuas, novos recursos e máxima estabilidade.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.checkUpdateButton}
+            onPress={handleCheckUpdate}
+            disabled={checkingUpdate}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={checkingUpdate ? 'hourglass-outline' : 'refresh-circle-outline'}
+              size={18}
+              color="#080B0C"
+            />
+            <Text style={styles.checkUpdateButtonText}>
+              {checkingUpdate ? 'Consultando Servidor...' : 'Verificar Novas Atualizações'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* RODAPÉ DO APLICATIVO */}
         <View style={styles.versionCard}>
-          <Text style={styles.versionText}>RM FROTAS APP • VERSÃO NATIVA 1.0.0</Text>
+          <Text style={styles.versionText}>RM FROTAS APP • CI/CD GITHUB RELEASES</Text>
           <Text style={styles.buildText}>Expo SDK 57 • Dark Industrial System</Text>
         </View>
       </ScrollView>
@@ -432,5 +496,39 @@ const styles = StyleSheet.create({
   buildText: {
     fontSize: 10,
     color: colors.textDim,
+  },
+  versionBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 122, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.25)',
+  },
+  versionBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  updateCardDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginVertical: 10,
+  },
+  checkUpdateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+  },
+  checkUpdateButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#080B0C',
   },
 });
