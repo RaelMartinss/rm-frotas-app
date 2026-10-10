@@ -15,6 +15,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
+import { locationService } from '../services/location.service';
 import { User } from '../types/auth';
 import { DriverPortalSummary, DriverCurrentTrip } from '../types/driver';
 
@@ -68,6 +69,15 @@ export function HomeScreen({
   const activeTrip = propActiveTrip || summary?.trip;
   const isTripInProgress = activeTrip?.status === 'IN_PROGRESS';
   const pendingReceipts = summary?.pendingReceiptsCount ?? 1;
+
+  // Ativa automaticamente o rastreamento GPS em segundo plano durante viagens EM ROTA
+  useEffect(() => {
+    if (activeTrip?.id && isTripInProgress) {
+      locationService.startTracking(activeTrip.id);
+    } else {
+      locationService.stopTracking();
+    }
+  }, [activeTrip?.id, isTripInProgress]);
 
   const isCnhExpired = summary?.driver?.isCnhExpired ?? false;
   const daysUntilCnhExpires = summary?.driver?.daysUntilCnhExpires;
@@ -135,6 +145,7 @@ export function HomeScreen({
               if (!activeTrip?.id) return;
               setCompleting(true);
               try {
+                await locationService.stopTracking();
                 await api.completeTrip(activeTrip.id);
                 Alert.alert('Viagem Concluída', 'O veículo foi liberado com sucesso!');
                 if (onTripCompleted) onTripCompleted();

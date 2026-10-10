@@ -104,3 +104,22 @@ export interface DriverFuelHistoryItem {
   isPendingReceipt: boolean;
   isOfflineQueueItem?: boolean;
 }
+
+export interface LocationPingDTO {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  speed?: number; // km/h
+  heading?: number;
+  recordedAt?: string;
+}
+
+export interface RecordLocationBatchDTO {
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+  speed?: number;
+  heading?: number;
+  recordedAt?: string;
+  pings?: LocationPingDTO[];
+}

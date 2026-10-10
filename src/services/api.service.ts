@@ -6,6 +6,7 @@ import {
   DriverFuelDTO,
   DriverHistoryItem,
   DriverFuelHistoryItem,
+  LocationPingDTO,
 } from '../types/driver';
 
 export const API_BASE_URL = 'https://rm-frotas.duckdns.org/v1';
@@ -234,6 +235,30 @@ class ApiService {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || 'Falha ao salvar checklist.');
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Envia coordenadas ou lote de pings de GPS para a viagem ativa
+   */
+  async sendLocationPings(
+    tripId: string,
+    pings: LocationPingDTO[]
+  ): Promise<{ message: string; savedCount?: number }> {
+    if (!pings || pings.length === 0) return { message: 'Nenhum ping para enviar' };
+
+    const payload = pings.length === 1 ? pings[0] : { pings };
+
+    const res = await this.authenticatedFetch(`/driver-portal/trips/${tripId}/location`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao registrar localização.');
     }
 
     return res.json();
