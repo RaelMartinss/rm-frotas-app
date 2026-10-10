@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,7 +19,7 @@ import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
 import { storage } from '../services/storage.service';
 import { locationService } from '../services/location.service';
-import { appUpdateService, UpdateInfo } from '../services/app-update.service';
+import { appUpdateService, UpdateInfo, UpdateDownloadState } from '../services/app-update.service';
 import { navigationService } from '../services/navigation.service';
 import { notificationService } from '../services/notification.service';
 import { NotificationCenterModal } from './NotificationCenterModal';
@@ -62,6 +63,12 @@ export function HomeScreen({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [driverPhoto, setDriverPhoto] = useState<string | null>(user.photoUrl || null);
+  const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
+    isDownloading: false,
+    progress: 0,
+    error: null,
+    completed: false,
+  });
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -94,6 +101,11 @@ export function HomeScreen({
       setUnreadNotifs(list.filter((n) => !n.read).length);
     });
 
+    // Inscreve no progresso do instalador de atualizações
+    const unsubUpdate = appUpdateService.subscribe((st) => {
+      setDownloadState(st);
+    });
+
     // Verificação proativa de nova versão no GitHub Releases
     const timer = setTimeout(() => {
       appUpdateService.checkForUpdates().then((info) => {
@@ -106,6 +118,7 @@ export function HomeScreen({
     return () => {
       clearTimeout(timer);
       unsubNotifs();
+      unsubUpdate();
     };
   }, [loadData]);
 
@@ -332,23 +345,36 @@ export function HomeScreen({
                 </Text>
               </View>
             </View>
-            <View style={styles.updateActionRow}>
-              <TouchableOpacity
-                style={styles.updateDismissButton}
-                onPress={() => setUpdateDismissed(true)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.updateDismissText}>Depois</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.updateInstallButton}
-                onPress={() => appUpdateService.downloadAndInstall(updateInfo.downloadUrl)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="download-outline" size={15} color="#080B0C" />
-                <Text style={styles.updateInstallText}>Instalar Atualização</Text>
-              </TouchableOpacity>
-            </View>
+            {downloadState.isDownloading ? (
+              <View style={styles.updateProgressContainer}>
+                <View style={styles.updateProgressHeader}>
+                  <Text style={styles.updateProgressTitle}>Baixando atualização...</Text>
+                  <Text style={styles.updateProgressPercent}>{downloadState.progress}%</Text>
+                </View>
+                <View style={styles.updateProgressBarTrack}>
+                  <View style={[styles.updateProgressBarFill, { width: `${downloadState.progress}%` }]} />
+                </View>
+                <Text style={styles.updateProgressHint}>O instalador nativo abrirá automaticamente ao concluir.</Text>
+              </View>
+            ) : (
+              <View style={styles.updateActionRow}>
+                <TouchableOpacity
+                  style={styles.updateDismissButton}
+                  onPress={() => setUpdateDismissed(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.updateDismissText}>Depois</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.updateInstallButton}
+                  onPress={() => appUpdateService.downloadAndInstall(updateInfo.downloadUrl)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="download-outline" size={15} color="#080B0C" />
+                  <Text style={styles.updateInstallText}>Instalar Atualização</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
 
@@ -650,6 +676,38 @@ export function HomeScreen({
           else if (screen === 'sos' && onNavigateToSOS) onNavigateToSOS();
         }}
       />
+
+      {/* MODAL DE DOWNLOAD DA ATUALIZAÇÃO NATIVA */}
+      <Modal
+        visible={downloadState.isDownloading}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.downloadModalBackdrop}>
+          <View style={styles.downloadModalCard}>
+            <View style={styles.downloadModalIconBox}>
+              <Ionicons name="cloud-download" size={32} color="#FF7A00" />
+            </View>
+            <Text style={styles.downloadModalTitle}>Baixando Atualização...</Text>
+            <Text style={styles.downloadModalSubtitle}>
+              Atualizando o RM Frotas para a versão v{updateInfo?.latestVersion || ''}
+            </Text>
+
+            <View style={styles.downloadProgressRow}>
+              <Text style={styles.downloadProgressLabel}>Progresso do download</Text>
+              <Text style={styles.downloadProgressValue}>{downloadState.progress}%</Text>
+            </View>
+
+            <View style={styles.downloadProgressBarTrack}>
+              <View style={[styles.downloadProgressBarFill, { width: `${downloadState.progress}%` }]} />
+            </View>
+
+            <Text style={styles.downloadModalHint}>
+              O instalador nativo abrirá automaticamente na tela ao concluir o download.
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1139,6 +1197,128 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#080B0C',
+  },
+  updateProgressContainer: {
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+    gap: 6,
+  },
+  updateProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  updateProgressTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E7EBEE',
+  },
+  updateProgressPercent: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FF7A00',
+    fontVariant: ['tabular-nums'],
+  },
+  updateProgressBarTrack: {
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  updateProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#FF7A00',
+    borderRadius: 3,
+  },
+  updateProgressHint: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+  downloadModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(8, 11, 12, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  downloadModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#11161A',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.3)',
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  downloadModalIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 122, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  downloadModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  downloadModalSubtitle: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  downloadProgressRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  downloadProgressLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CAD2D9',
+  },
+  downloadProgressValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FF7A00',
+    fontVariant: ['tabular-nums'],
+  },
+  downloadProgressBarTrack: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#1E262B',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  downloadProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#FF7A00',
+    borderRadius: 4,
+  },
+  downloadModalHint: {
+    fontSize: 11,
+    color: '#8E9DA8',
+    textAlign: 'center',
+    lineHeight: 16,
   },
 });
 

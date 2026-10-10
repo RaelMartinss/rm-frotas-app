@@ -21,7 +21,7 @@ import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
 import { storage } from '../services/storage.service';
-import { appUpdateService, CURRENT_APP_VERSION } from '../services/app-update.service';
+import { appUpdateService, CURRENT_APP_VERSION, UpdateDownloadState } from '../services/app-update.service';
 import { User } from '../types/auth';
 
 interface ProfileScreenProps {
@@ -37,6 +37,12 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
   const [hasBiometricHardware, setHasBiometricHardware] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
+  const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
+    isDownloading: false,
+    progress: 0,
+    error: null,
+    completed: false,
+  });
 
   // Modais de Edição
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
@@ -56,6 +62,10 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
     biometricService.isAvailable().then(setHasBiometricHardware);
     biometricService.isEnabled().then(setBiometricsEnabled);
 
+    const unsubUpdate = appUpdateService.subscribe((st) => {
+      setDownloadState(st);
+    });
+
     // Carrega dados e foto do storage local ou API
     storage.getItem(`rm_driver_phone_${user.id}`).then((p) => {
       if (p) setPhone(p);
@@ -70,6 +80,10 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
         storage.setItem('rm_driver_photo', sum.driver.photoUrl);
       }
     }).catch(() => {});
+
+    return () => {
+      unsubUpdate();
+    };
   }, [user.id]);
 
   const handleToggleBiometrics = async (val: boolean) => {
@@ -645,6 +659,38 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL DE DOWNLOAD DA ATUALIZAÇÃO NATIVA */}
+      <Modal
+        visible={downloadState.isDownloading}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.downloadModalBackdrop}>
+          <View style={styles.downloadModalCard}>
+            <View style={styles.downloadModalIconBox}>
+              <Ionicons name="cloud-download" size={32} color="#FF7A00" />
+            </View>
+            <Text style={styles.downloadModalTitle}>Baixando Atualização...</Text>
+            <Text style={styles.downloadModalSubtitle}>
+              Atualizando o RM Frotas no dispositivo
+            </Text>
+
+            <View style={styles.downloadProgressRow}>
+              <Text style={styles.downloadProgressLabel}>Progresso do download</Text>
+              <Text style={styles.downloadProgressValue}>{downloadState.progress}%</Text>
+            </View>
+
+            <View style={styles.downloadProgressBarTrack}>
+              <View style={[styles.downloadProgressBarFill, { width: `${downloadState.progress}%` }]} />
+            </View>
+
+            <Text style={styles.downloadModalHint}>
+              O instalador nativo abrirá automaticamente na tela ao concluir o download.
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1071,5 +1117,89 @@ const styles = StyleSheet.create({
     color: '#080B0C',
     fontWeight: '900',
     fontSize: 13,
+  },
+  downloadModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(8, 11, 12, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  downloadModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#11161A',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.3)',
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  downloadModalIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 122, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  downloadModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  downloadModalSubtitle: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  downloadProgressRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  downloadProgressLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CAD2D9',
+  },
+  downloadProgressValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FF7A00',
+    fontVariant: ['tabular-nums'],
+  },
+  downloadProgressBarTrack: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#1E262B',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  downloadProgressBarFill: {
+    height: '100%',
+    backgroundColor: '#FF7A00',
+    borderRadius: 4,
+  },
+  downloadModalHint: {
+    fontSize: 11,
+    color: '#8E9DA8',
+    textAlign: 'center',
+    lineHeight: 16,
   },
 });
