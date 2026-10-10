@@ -372,84 +372,71 @@ export function HomeScreen({
         </View>
 
         {/* SEÇÃO AÇÕES RÁPIDAS (GRID 2x2) */}
+        {/* SEÇÃO AÇÕES RÁPIDAS (ESTILO BANCO INTER) */}
         <View style={styles.sectionHeader}>
-          <Ionicons name="flash" size={16} color={colors.primary} />
           <Text style={styles.sectionTitle}>AÇÕES RÁPIDAS</Text>
         </View>
 
-        <View style={styles.quickGrid}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.quickScroll}
+        >
           {/* 1. Abastecer */}
           <TouchableOpacity
-            style={styles.quickCard}
+            style={styles.interCard}
             onPress={onNavigateToFuel}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <View style={styles.quickCardContent}>
-              <View style={[styles.quickIconBox, { backgroundColor: colors.primaryMuted, borderColor: colors.primaryBorder }]}>
-                <MaterialCommunityIcons name="gas-station" size={20} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.quickCardTitle}>Abastecer</Text>
-                <Text style={styles.quickCardDesc}>Cupom e odômetro</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
-            </View>
+            <MaterialCommunityIcons name="gas-station-outline" size={26} color="#FFFFFF" />
+            <Text style={styles.interCardTitle}>Abastecer</Text>
           </TouchableOpacity>
 
           {/* 2. SOS Alerta */}
           <TouchableOpacity
-            style={styles.quickCard}
+            style={styles.interCard}
             onPress={handleSOS}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <View style={styles.quickCardContent}>
-              <View style={[styles.quickIconBox, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
-                <MaterialCommunityIcons name="shield-alert-outline" size={20} color="#F87171" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.quickCardTitle, { color: '#F87171' }]}>SOS Alerta</Text>
-                <Text style={styles.quickCardDesc}>Emergência</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
-            </View>
+            <MaterialCommunityIcons name="shield-alert-outline" size={26} color="#FFFFFF" />
+            <Text style={styles.interCardTitle}>SOS Alerta</Text>
           </TouchableOpacity>
 
           {/* 3. Checklist */}
           <TouchableOpacity
-            style={styles.quickCard}
+            style={styles.interCard}
             onPress={onNavigateToTrip}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <View style={styles.quickCardContent}>
-              <View style={[styles.quickIconBox, { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)' }]}>
-                <Ionicons name="clipboard-outline" size={18} color="#60A5FA" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.quickCardTitle}>Checklist</Text>
-                <Text style={styles.quickCardDesc}>Inspeção diária</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
-            </View>
+            <MaterialCommunityIcons name="clipboard-check-outline" size={26} color="#FFFFFF" />
+            <Text style={styles.interCardTitle}>Checklist</Text>
           </TouchableOpacity>
 
           {/* 4. Histórico */}
           <TouchableOpacity
-            style={styles.quickCard}
+            style={styles.interCard}
             onPress={onNavigateToHistory}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <View style={styles.quickCardContent}>
-              <View style={[styles.quickIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
-                <Ionicons name="time-outline" size={18} color="#34D399" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.quickCardTitle}>Histórico</Text>
-                <Text style={styles.quickCardDesc}>Viagens e cupons</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
-            </View>
+            <MaterialCommunityIcons name="clock-outline" size={26} color="#FFFFFF" />
+            <Text style={styles.interCardTitle}>Histórico</Text>
           </TouchableOpacity>
-        </View>
+
+          {/* 5. Documentos */}
+          <TouchableOpacity
+            style={styles.interCard}
+            onPress={() => {
+              Alert.alert(
+                'Documentos do Veículo',
+                `Veículo: ${activeTrip?.vehicle?.brand || 'Volvo'} ${activeTrip?.vehicle?.model || 'FH540'}\nPlaca: ${activeTrip?.vehicle?.plate || 'BRA2E19'}\nCRLV Validade: ${activeTrip?.vehicle?.crlvExpiration || '15/10/2026'}\nCNH: ${summary?.driver?.cnhNumber || 'Regularizada'}`
+              );
+            }}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="file-document-outline" size={26} color="#FFFFFF" />
+            <Text style={styles.interCardTitle}>Documentos</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </ScrollView>
     </SafeAreaView>
   );
@@ -765,45 +752,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
+    marginTop: 6,
+    marginBottom: -4,
   },
   sectionTitle: {
     fontSize: 12,
     fontWeight: '800',
     color: colors.textSecondary,
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
-  quickGrid: {
+  quickScroll: {
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
     gap: 10,
+    paddingVertical: 4,
   },
-  quickCard: {
-    backgroundColor: colors.surface,
+  interCard: {
+    width: 94,
+    height: 94,
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 20,
+    padding: 13,
+    justifyContent: 'space-between',
   },
-  quickCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  quickIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickCardTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  quickCardDesc: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
+  interCardTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 15,
   },
 });
