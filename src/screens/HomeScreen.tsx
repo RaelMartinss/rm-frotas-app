@@ -316,10 +316,10 @@ export function HomeScreen({
               </View>
               <View>
                 <Text style={styles.timingLabel}>
-                  {isTripInProgress ? 'Saída' : 'Saída prevista'}
+                  {isTripInProgress ? 'Saída / Início' : 'Saída prevista'}
                 </Text>
                 <Text style={styles.timingValue}>
-                  {formatTripDateTime(activeTrip?.startedAt || activeTrip?.departureDate || activeTrip?.createdAt)}
+                  {formatTripDateTime(activeTrip?.scheduledDate || activeTrip?.startedAt || activeTrip?.createdAt)}
                 </Text>
               </View>
             </View>
@@ -329,11 +329,12 @@ export function HomeScreen({
                 <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
               </View>
               <View>
-                <Text style={styles.timingLabel}>Chegada prevista</Text>
+                <Text style={styles.timingLabel}>Previsão Chegada</Text>
                 <Text style={styles.timingValue}>
-                  {activeTrip?.scheduledDate
-                    ? formatTripDateTime(activeTrip.scheduledDate)
-                    : formatTripDateTime(activeTrip?.startedAt || activeTrip?.createdAt, 6)}
+                  {formatTripDateTime(
+                    activeTrip?.estimatedArrivalDate || activeTrip?.scheduledDate,
+                    activeTrip?.estimatedArrivalDate ? 0 : 6
+                  )}
                 </Text>
               </View>
             </View>

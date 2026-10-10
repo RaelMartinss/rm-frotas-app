@@ -35,6 +35,7 @@ export interface DriverCurrentTrip {
   destinationCity: string;
   destinationState: string;
   scheduledDate?: string | null;
+  estimatedArrivalDate?: string | null;
   departureDate?: string | null;
   startedAt: string | null;
   createdAt: string;
