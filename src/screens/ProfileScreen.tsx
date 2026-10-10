@@ -372,58 +372,61 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
 
           {/* BANNER HERO COM CAMINHÃO PANORÂMICO AO FUNDO */}
           <View style={styles.heroCardContainer}>
-            <ImageBackground
+            {/* Imagem do caminhão ocupando 100% da área do card */}
+            <Image
               source={require('../../assets/images/truck-hero-bg.png')}
-              style={styles.heroBackground}
+              style={styles.heroBackgroundImage}
               resizeMode="cover"
-            >
-              <View style={styles.heroOverlayGradient} />
+            />
 
-              <View style={styles.heroContentRow}>
-                {/* Avatar Grande com Ring Laranja Industrial e Botão de Câmera */}
-                <View style={styles.heroAvatarWrapper}>
-                  <TouchableOpacity
-                    style={styles.heroAvatarTouch}
-                    onPress={handleSelectPhoto}
-                    activeOpacity={0.85}
-                    disabled={updatingPhoto}
-                  >
-                    {updatingPhoto ? (
-                      <View style={styles.heroAvatarPlaceholder}>
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      </View>
-                    ) : photoUrl ? (
-                      <Image source={{ uri: photoUrl }} style={styles.heroAvatarImage} />
-                    ) : (
-                      <View style={styles.heroAvatarPlaceholder}>
-                        <Text style={styles.heroAvatarInitials}>{driverInitials}</Text>
-                      </View>
-                    )}
+            {/* Gradiente/overlay escurecendo a esquerda para legibilidade perfeita dos textos mantendo o caminhão visível à direita */}
+            <View style={styles.heroOverlayGradientLeft} />
+            <View style={styles.heroOverlayGradientRight} />
 
-                    {/* Botão de Câmera flutuante no canto inferior direito */}
-                    <View style={styles.heroCameraPill}>
-                      <Ionicons name="camera" size={13} color="#080B0C" />
+            <View style={styles.heroContentRow}>
+              {/* Avatar Grande com Ring Laranja Industrial e Botão de Câmera */}
+              <View style={styles.heroAvatarWrapper}>
+                <TouchableOpacity
+                  style={styles.heroAvatarTouch}
+                  onPress={handleSelectPhoto}
+                  activeOpacity={0.85}
+                  disabled={updatingPhoto}
+                >
+                  {updatingPhoto ? (
+                    <View style={styles.heroAvatarPlaceholder}>
+                      <ActivityIndicator size="small" color={colors.primary} />
                     </View>
-                  </TouchableOpacity>
-                </View>
+                  ) : photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={styles.heroAvatarImage} />
+                  ) : (
+                    <View style={styles.heroAvatarPlaceholder}>
+                      <Text style={styles.heroAvatarInitials}>{driverInitials}</Text>
+                    </View>
+                  )}
 
-                {/* Informações do Motorista */}
-                <View style={styles.heroInfoCol}>
-                  <Text style={styles.heroDriverName} numberOfLines={1}>
-                    {summary?.driver?.name || profileUser.name || 'Rael Martins'}
-                  </Text>
-
-                  {/* Status Online */}
-                  <View style={styles.onlinePill}>
-                    <View style={styles.onlineDot} />
-                    <Text style={styles.onlinePillText}>Online</Text>
+                  {/* Botão de Câmera flutuante no canto inferior direito */}
+                  <View style={styles.heroCameraPill}>
+                    <Ionicons name="camera" size={13} color="#080B0C" />
                   </View>
-
-                  {/* Cargo */}
-                  <Text style={styles.heroRoleSubtitle}>Motorista</Text>
-                </View>
+                </TouchableOpacity>
               </View>
-            </ImageBackground>
+
+              {/* Informações do Motorista */}
+              <View style={styles.heroInfoCol}>
+                <Text style={styles.heroDriverName} numberOfLines={1}>
+                  {summary?.driver?.name || profileUser.name || 'Rael Martins'}
+                </Text>
+
+                {/* Status Online */}
+                <View style={styles.onlinePill}>
+                  <View style={styles.onlineDot} />
+                  <Text style={styles.onlinePillText}>Online</Text>
+                </View>
+
+                {/* Cargo */}
+                <Text style={styles.heroRoleSubtitle}>Motorista</Text>
+              </View>
+            </View>
           </View>
 
           {/* LINHA DE DADOS DOCUMENTAIS (3 COLUNAS) */}
@@ -1235,18 +1238,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#222A2F',
     backgroundColor: '#11161A',
-  },
-  heroBackground: {
-    width: '100%',
+    position: 'relative',
+    minHeight: 108,
     padding: 16,
+    justifyContent: 'center',
   },
-  heroOverlayGradient: {
+  heroBackgroundImage: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(8, 11, 12, 0.85)',
+    width: '100%',
+    height: '100%',
+  },
+  heroOverlayGradientLeft: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: '68%',
+    backgroundColor: 'rgba(8, 11, 12, 0.90)',
+  },
+  heroOverlayGradientRight: {
+    position: 'absolute',
+    top: 0,
+    left: '60%',
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(8, 11, 12, 0.35)',
   },
   heroContentRow: {
     flexDirection: 'row',
