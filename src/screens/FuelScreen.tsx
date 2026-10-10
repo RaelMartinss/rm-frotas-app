@@ -9,9 +9,11 @@ import {
   StatusBar,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 
 interface FuelScreenProps {
@@ -27,7 +29,7 @@ export function FuelScreen({ onBack, onSuccess }: FuelScreenProps) {
   const [liters, setLiters] = useState('');
   const [pricePerLiter, setPricePerLiter] = useState('');
   const [stationName, setStationName] = useState('');
-  const [hasReceiptPhoto, setHasReceiptPhoto] = useState(false);
+  const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Cálculo automático do total
@@ -35,6 +37,62 @@ export function FuelScreen({ onBack, onSuccess }: FuelScreenProps) {
     liters && pricePerLiter
       ? (parseFloat(liters.replace(',', '.')) * parseFloat(pricePerLiter.replace(',', '.'))).toFixed(2)
       : '0,00';
+
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Precisamos de acesso à câmera para fotografar o cupom fiscal.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setReceiptPhotoUri(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir a câmera.');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Precisamos de acesso à galeria para anexar o comprovante.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setReceiptPhotoUri(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir a galeria.');
+    }
+  };
+
+  const handleSelectPhoto = () => {
+    Alert.alert(
+      'Comprovante Fiscal',
+      'Escolha como deseja registrar o cupom:',
+      [
+        { text: '📷 Câmera (Tirar Foto)', onPress: takePhoto },
+        { text: '🖼️ Galeria de Fotos', onPress: pickImage },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleRemovePhoto = () => {
+    setReceiptPhotoUri(null);
+  };
 
   const handleSave = () => {
     if (!km || !liters || !pricePerLiter) {
@@ -213,28 +271,53 @@ export function FuelScreen({ onBack, onSuccess }: FuelScreenProps) {
             <Text style={styles.labelHint}>Obrigatório para prestação</Text>
           </View>
 
-          <TouchableOpacity
-            style={[styles.photoBox, hasReceiptPhoto && styles.photoBoxAttached]}
-            onPress={() => setHasReceiptPhoto(!hasReceiptPhoto)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.photoIconBadge}>
-              <Ionicons
-                name={hasReceiptPhoto ? 'checkmark-circle' : 'camera-outline'}
-                size={24}
-                color={hasReceiptPhoto ? '#34D399' : colors.primary}
-              />
+          {receiptPhotoUri ? (
+            <View style={styles.photoPreviewCard}>
+              <Image source={{ uri: receiptPhotoUri }} style={styles.photoPreviewImage} />
+              <View style={styles.photoPreviewMeta}>
+                <View style={styles.photoAttachedBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color="#34D399" />
+                  <Text style={styles.photoAttachedBadgeText}>Comprovante Anexado</Text>
+                </View>
+                <Text style={styles.photoFilename} numberOfLines={1}>
+                  Foto do comprovante pronta para envio
+                </Text>
+                <View style={styles.photoActionsRow}>
+                  <TouchableOpacity
+                    style={styles.changePhotoButton}
+                    onPress={handleSelectPhoto}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="camera-reverse-outline" size={14} color={colors.primary} />
+                    <Text style={styles.changePhotoButtonText}>Trocar foto</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.removePhotoButton}
+                    onPress={handleRemovePhoto}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="trash-outline" size={14} color="#F87171" />
+                    <Text style={styles.removePhotoButtonText}>Remover</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.photoTitle}>
-                {hasReceiptPhoto ? 'Cupom anexado com sucesso!' : 'Tirar foto do cupom'}
-              </Text>
-              <Text style={styles.photoDesc}>
-                {hasReceiptPhoto ? 'Toque para alterar a foto' : 'Câmera nativa com leitura de odômetro'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.photoBox}
+              onPress={handleSelectPhoto}
+              activeOpacity={0.8}
+            >
+              <View style={styles.photoIconBadge}>
+                <Ionicons name="camera-outline" size={24} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.photoTitle}>Tirar foto ou anexar cupom</Text>
+                <Text style={styles.photoDesc}>Câmera nativa ou galeria do aparelho</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* BOTÃO SALVAR */}
@@ -495,6 +578,67 @@ const styles = StyleSheet.create({
     borderStyle: 'solid',
     borderColor: 'rgba(52, 211, 153, 0.4)',
     backgroundColor: 'rgba(16, 185, 129, 0.08)',
+  },
+  photoPreviewCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+    borderRadius: 16,
+    padding: 12,
+    gap: 12,
+    alignItems: 'center',
+  },
+  photoPreviewImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  photoPreviewMeta: {
+    flex: 1,
+    gap: 4,
+  },
+  photoAttachedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  photoAttachedBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#34D399',
+  },
+  photoFilename: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  photoActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  changePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  changePhotoButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  removePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  removePhotoButtonText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#F87171',
   },
   photoIconBadge: {
     width: 42,
