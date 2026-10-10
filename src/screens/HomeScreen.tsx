@@ -18,6 +18,8 @@ import { api } from '../services/api.service';
 import { locationService } from '../services/location.service';
 import { appUpdateService, UpdateInfo } from '../services/app-update.service';
 import { navigationService } from '../services/navigation.service';
+import { notificationService } from '../services/notification.service';
+import { NotificationCenterModal } from './NotificationCenterModal';
 import { User } from '../types/auth';
 import { DriverPortalSummary, DriverCurrentTrip } from '../types/driver';
 
@@ -55,6 +57,8 @@ export function HomeScreen({
   const [completing, setCompleting] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -75,6 +79,11 @@ export function HomeScreen({
     biometricService.isAvailable().then(setBiometricAvailable);
     loadData();
 
+    // Inscreve na central de notificações
+    const unsubNotifs = notificationService.subscribe((list) => {
+      setUnreadNotifs(list.filter((n) => !n.read).length);
+    });
+
     // Verificação proativa de nova versão no GitHub Releases
     const timer = setTimeout(() => {
       appUpdateService.checkForUpdates().then((info) => {
@@ -84,7 +93,10 @@ export function HomeScreen({
       });
     }, 2500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      unsubNotifs();
+    };
   }, [loadData]);
 
   const activeTrip = propActiveTrip || summary?.trip;
@@ -257,11 +269,11 @@ export function HomeScreen({
         <View style={styles.headerRightActions}>
           <TouchableOpacity
             style={styles.headerIconButton}
-            onPress={onNavigateToProfile}
+            onPress={() => setNotificationsOpen(true)}
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={20} color={colors.textSecondary} />
-            <View style={styles.notifBadge} />
+            {unreadNotifs > 0 && <View style={styles.notifBadge} />}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -607,6 +619,19 @@ export function HomeScreen({
           </TouchableOpacity>
         </ScrollView>
       </ScrollView>
+
+      {/* MODAL CENTRAL DE NOTIFICAÇÕES */}
+      <NotificationCenterModal
+        visible={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        onNavigateToScreen={(screen) => {
+          if (screen === 'fuel') onNavigateToFuel();
+          else if (screen === 'trip') onNavigateToTrip();
+          else if (screen === 'profile') onNavigateToProfile();
+          else if (screen === 'route' && onNavigateToRoute) onNavigateToRoute();
+          else if (screen === 'sos' && onNavigateToSOS) onNavigateToSOS();
+        }}
+      />
     </SafeAreaView>
   );
 }

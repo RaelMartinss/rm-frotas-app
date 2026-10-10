@@ -486,6 +486,83 @@ class ApiService {
       throw err;
     }
   }
+
+  /**
+   * Altera a senha do usuário autenticado
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    const res = await this.authenticatedFetch('/me/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao alterar senha.');
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Atualiza as informações do perfil (nome)
+   */
+  async updateProfile(name: string): Promise<{ id: string; name: string; email: string }> {
+    const res = await this.authenticatedFetch('/me', {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao atualizar dados do perfil.');
+    }
+
+    const data = await res.json();
+
+    // Atualiza dados no storage local
+    try {
+      const user = await this.getStoredUser();
+      if (user) {
+        user.name = data.name;
+        await storage.setItem('rm_user', JSON.stringify(user));
+        await storage.setItem('rm_last_user', JSON.stringify(user));
+      }
+    } catch {}
+
+    return data;
+  }
+
+  /**
+   * Atualiza a foto do perfil do motorista
+   */
+  async updateProfilePhoto(photoUrl: string | null): Promise<{ success: boolean; photoUrl: string | null; message: string }> {
+    const res = await this.authenticatedFetch('/driver-portal/profile/photo', {
+      method: 'PATCH',
+      body: JSON.stringify({ photoUrl }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao atualizar foto de perfil.');
+    }
+
+    const result = await res.json();
+
+    // Atualiza cache do resumo do motorista com a nova foto
+    try {
+      const cachedSummaryStr = await storage.getItem(CACHE_KEYS.CURRENT_TRIP);
+      if (cachedSummaryStr) {
+        const summary = JSON.parse(cachedSummaryStr);
+        if (summary.driver) {
+          summary.driver.photoUrl = photoUrl;
+          await storage.setItem(CACHE_KEYS.CURRENT_TRIP, JSON.stringify(summary));
+        }
+      }
+    } catch {}
+
+    return result;
+  }
 }
 
 export const api = new ApiService();
