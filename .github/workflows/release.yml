@@ -34,7 +34,7 @@ jobs:
           if [ -z "$VERSION" ] || [ "$TAG" = "master" ] || [ "$TAG" = "main" ]; then
             VERSION="1.0.1"
           fi
-          BUILD_NUM=$(( ${{ github.run_number }} + 10 ))
+          BUILD_NUM=$(( ${{ github.run_number }} + 200 ))
           node scripts/inject-version.js "$VERSION" "$BUILD_NUM"
 
       - name: Set up Java JDK 17
