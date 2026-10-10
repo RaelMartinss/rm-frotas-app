@@ -86,6 +86,36 @@ export function HomeScreen({
     }
   };
 
+  const formatTripDateTime = (dateStr?: string | null, fallbackHours = 0) => {
+    if (!dateStr) return '--:--';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+
+      if (fallbackHours > 0) {
+        d.setHours(d.getHours() + fallbackHours);
+      }
+
+      const now = new Date();
+      const isToday =
+        d.getDate() === now.getDate() &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear();
+
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+
+      if (isToday) {
+        return `Hoje • ${hours}:${minutes}`;
+      }
+      return `${day}/${month} • ${hours}:${minutes}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
   const handleTripAction = () => {
     if (isTripInProgress) {
       Alert.alert(
@@ -278,15 +308,19 @@ export function HomeScreen({
             </Text>
           </View>
 
-          {/* Horários */}
+          {/* Horários Dinâmicos da Viagem */}
           <View style={styles.tripTimingGrid}>
             <View style={styles.timingItem}>
               <View style={styles.timingIconBox}>
                 <Ionicons name="calendar-outline" size={14} color={colors.primary} />
               </View>
               <View>
-                <Text style={styles.timingLabel}>Saída prevista</Text>
-                <Text style={styles.timingValue}>Hoje • 08:30</Text>
+                <Text style={styles.timingLabel}>
+                  {isTripInProgress ? 'Saída' : 'Saída prevista'}
+                </Text>
+                <Text style={styles.timingValue}>
+                  {formatTripDateTime(activeTrip?.startedAt || activeTrip?.departureDate || activeTrip?.createdAt)}
+                </Text>
               </View>
             </View>
 
@@ -296,7 +330,11 @@ export function HomeScreen({
               </View>
               <View>
                 <Text style={styles.timingLabel}>Chegada prevista</Text>
-                <Text style={styles.timingValue}>Hoje • 15:45</Text>
+                <Text style={styles.timingValue}>
+                  {activeTrip?.scheduledDate
+                    ? formatTripDateTime(activeTrip.scheduledDate)
+                    : formatTripDateTime(activeTrip?.startedAt || activeTrip?.createdAt, 6)}
+                </Text>
               </View>
             </View>
           </View>
