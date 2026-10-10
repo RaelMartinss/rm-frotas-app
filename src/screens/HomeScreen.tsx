@@ -367,7 +367,7 @@ export function HomeScreen({
                   : 'Iniciar Viagem'}
               </Text>
             </View>
-            <Ionicons name="arrow-forward" size={18} color="#080B0C" />
+            <Ionicons name="arrow-forward" size={16} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -716,37 +716,37 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   startTripButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
+    marginTop: 6,
   },
   startTripButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   playIconBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#080B0C',
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255, 107, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   startTripButtonText: {
-    color: '#080B0C',
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   sectionHeader: {
     flexDirection: 'row',
