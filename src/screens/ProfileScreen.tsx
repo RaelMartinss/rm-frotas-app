@@ -401,9 +401,8 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
               resizeMode="cover"
             />
 
-            {/* Gradiente/overlay escurecendo a esquerda para legibilidade perfeita dos textos mantendo o caminhão visível à direita */}
-            <View style={styles.heroOverlayGradientLeft} />
-            <View style={styles.heroOverlayGradientRight} />
+            {/* Sombra cobrindo todo o card de ponta a ponta */}
+            <View style={styles.heroOverlay} />
 
             <View style={styles.heroContentRow}>
               {/* Avatar Grande com Ring Laranja Industrial e Botão de Câmera */}
@@ -489,7 +488,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
             <View style={styles.docColValidade}>
               <View style={styles.docLabelRow}>
                 <Ionicons name="calendar-outline" size={13} color="#8E9DA8" />
-                <Text style={styles.docLabelText}>VALIDADE</Text>
+                <Text style={styles.docLabelText} numberOfLines={1}>VALIDADE</Text>
               </View>
               <Text
                 style={styles.docValueText}
@@ -1347,21 +1346,15 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'cover',
   },
-  heroOverlayGradientLeft: {
+  heroOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
-    bottom: 0,
-    width: '58%',
-    backgroundColor: 'rgba(8, 11, 12, 0.82)',
-  },
-  heroOverlayGradientRight: {
-    position: 'absolute',
-    top: 0,
-    left: '50%',
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(8, 11, 12, 0.18)',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(8, 11, 12, 0.72)',
   },
   heroContentRow: {
     flexDirection: 'row',
@@ -1466,17 +1459,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   docColCpf: {
-    flex: 1.15,
+    flex: 1.1,
     minWidth: 0,
     gap: 3,
   },
   docColCnh: {
-    flex: 1,
+    flex: 0.95,
     minWidth: 0,
     gap: 3,
   },
   docColValidade: {
-    flex: 1.05,
+    flex: 1.15,
     minWidth: 0,
     gap: 3,
   },
@@ -1484,13 +1477,13 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: '#222A2F',
-    paddingHorizontal: 8,
-    marginHorizontal: 4,
+    paddingHorizontal: 6,
+    marginHorizontal: 3,
   },
   docLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   docLabelText: {
     fontSize: 9,
