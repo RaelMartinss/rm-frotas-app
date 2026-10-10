@@ -35,6 +35,7 @@ class AppUpdateService {
         method: 'GET',
         headers: {
           Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'RM-Frotas-App',
         },
       });
 
