@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   Image,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -33,6 +34,8 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
   const [liters, setLiters] = useState('320.00');
   const [pricePerLiter, setPricePerLiter] = useState('6.19');
   const [stationName, setStationName] = useState('Posto Graal Embaixador');
+  const [fullTank, setFullTank] = useState(true);
+  const [notes, setNotes] = useState('');
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -178,6 +181,8 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
         pricePerLiter: parsedPrice,
         fuelType,
         gasStation: stationName.trim() || undefined,
+        fullTank,
+        notes: notes.trim() || undefined,
         receiptUrl: receiptBase64 || receiptPhotoUri || undefined,
         occurredAt: new Date().toISOString(),
       };
@@ -341,22 +346,65 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
           </View>
         </View>
 
-        {/* SEÇÃO 4: POSTO DE COMBUSTÍVEL */}
+        {/* SEÇÃO 4: TANQUE CHEIO */}
+        <TouchableOpacity
+          style={styles.sectionCard}
+          activeOpacity={0.8}
+          onPress={() => setFullTank(!fullTank)}
+        >
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <View style={styles.switchHeaderRow}>
+                <MaterialCommunityIcons
+                  name="gas-station-outline"
+                  size={18}
+                  color={fullTank ? colors.primary : colors.textMuted}
+                />
+                <Text style={styles.switchTitle}>Tanque Cheio (Completou o tanque)</Text>
+              </View>
+              <Text style={styles.switchDesc}>
+                Marque se completou até o desarme automático da bomba. Essencial para o cálculo de média Km/L.
+              </Text>
+            </View>
+            <Switch
+              value={fullTank}
+              onValueChange={setFullTank}
+              trackColor={{ false: '#222A2F', true: colors.primary }}
+              thumbColor={fullTank ? '#FFFFFF' : '#8E9DA8'}
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* SEÇÃO 5: POSTO DE COMBUSTÍVEL E OBSERVAÇÕES */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>POSTO / ESTABELECIMENTO</Text>
+          <Text style={styles.sectionLabel}>POSTO DE COMBUSTÍVEL (OPCIONAL)</Text>
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
               value={stationName}
               onChangeText={setStationName}
-              placeholder="Ex: Posto Graal Embaixador"
+              placeholder="Ex: Posto Graal Embaixador, Shell..."
               placeholderTextColor={colors.textDim}
             />
             <MaterialCommunityIcons name="map-marker-outline" size={18} color={colors.textMuted} style={styles.inputIconRight} />
           </View>
+
+          <View style={[styles.labelRow, { marginTop: 4 }]}>
+            <Text style={styles.sectionLabel}>OBSERVAÇÕES ADICIONAIS (OPCIONAL)</Text>
+          </View>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Ex: Desconto via convênio, bomba 03..."
+              placeholderTextColor={colors.textDim}
+            />
+            <MaterialCommunityIcons name="file-document-outline" size={18} color={colors.textMuted} style={styles.inputIconRight} />
+          </View>
         </View>
 
-        {/* SEÇÃO 5: FOTO DO CUPOM FISCAL / COMPROVANTE */}
+        {/* SEÇÃO 6: FOTO DO CUPOM FISCAL / COMPROVANTE */}
         <View style={styles.sectionCard}>
           <View style={styles.labelRow}>
             <Text style={styles.sectionLabel}>FOTO DO CUPOM FISCAL</Text>
@@ -551,6 +599,27 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     gap: 12,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  switchHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  switchTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  switchDesc: {
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 16,
   },
   labelRow: {
     flexDirection: 'row',

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -61,6 +62,7 @@ export function HomeScreen({
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [docsModalOpen, setDocsModalOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [driverPhoto, setDriverPhoto] = useState<string | null>(user.photoUrl || null);
   const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
@@ -642,12 +644,7 @@ export function HomeScreen({
           {/* 5. Documentos */}
           <TouchableOpacity
             style={styles.interCard}
-            onPress={() => {
-              Alert.alert(
-                'Documentos do Veículo',
-                `Veículo: ${activeTrip?.vehicle?.brand || 'Volvo'} ${activeTrip?.vehicle?.model || 'FH540'}\nPlaca: ${activeTrip?.vehicle?.plate || 'BRA2E19'}\nCRLV Validade: ${activeTrip?.vehicle?.crlvExpiration || '15/10/2026'}\nCNH: ${summary?.driver?.cnhNumber || 'Regularizada'}`
-              );
-            }}
+            onPress={() => setDocsModalOpen(true)}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons name="file-document-outline" size={26} color="#FFFFFF" />
@@ -697,6 +694,147 @@ export function HomeScreen({
             <Text style={styles.downloadModalHint}>
               O instalador nativo abrirá automaticamente na tela ao concluir o download.
             </Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DOCUMENTOS DE VIAGEM (CRLV & CNH) */}
+      <Modal
+        visible={docsModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDocsModalOpen(false)}
+      >
+        <View style={styles.docsModalBackdrop}>
+          <View style={styles.docsModalCard}>
+            {/* Topo do Modal */}
+            <View style={styles.docsModalHeader}>
+              <View style={styles.docsModalHeaderLeft}>
+                <View style={styles.docsModalIconBadge}>
+                  <MaterialCommunityIcons name="file-document-outline" size={20} color="#FF7A00" />
+                </View>
+                <View>
+                  <Text style={styles.docsModalTitle}>Documentação de Viagem</Text>
+                  <Text style={styles.docsModalSubtitle}>CRLV do veículo e CNH do condutor</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setDocsModalOpen(false)}
+                style={styles.docsModalCloseBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.docsModalScroll}>
+              {/* CARD 1: VEÍCULO ATUAL (CRLV) */}
+              <View style={styles.docSectionCard}>
+                <View style={styles.docSectionTop}>
+                  <View style={styles.docSectionTitleRow}>
+                    <MaterialCommunityIcons name="truck-outline" size={16} color="#FF7A00" />
+                    <Text style={styles.docSectionTitle}>VEÍCULO DESIGNADO</Text>
+                  </View>
+                  <View style={styles.plateBadge}>
+                    <Text style={styles.plateBadgeText}>
+                      {activeTrip?.vehicle?.plate || summary?.trip?.vehicle?.plate || 'BRA2E19'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.docVehicleName}>
+                  {(activeTrip?.vehicle?.brand || summary?.trip?.vehicle?.brand || 'Volvo')} {(activeTrip?.vehicle?.model || summary?.trip?.vehicle?.model || 'FH540')} ({activeTrip?.vehicle?.year || summary?.trip?.vehicle?.year || '2023'})
+                </Text>
+
+                <View style={styles.docDetailsDivider} />
+
+                <View style={styles.docDetailsGrid}>
+                  <View style={styles.docDetailRow}>
+                    <Text style={styles.docDetailLabel}>RENAVAM:</Text>
+                    <Text style={styles.docDetailValueMono}>
+                      {activeTrip?.vehicle?.renavam || summary?.trip?.vehicle?.renavam || '00984712391'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.docDetailRow}>
+                    <Text style={styles.docDetailLabel}>Vencimento CRLV:</Text>
+                    <Text style={styles.docDetailValue}>
+                      {activeTrip?.vehicle?.crlvExpiration || summary?.trip?.vehicle?.crlvExpiration || '15/10/2026'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.docDetailRow}>
+                    <Text style={styles.docDetailLabel}>Situação do Veículo:</Text>
+                    <View style={styles.docStatusPill}>
+                      <View style={styles.docStatusDotGreen} />
+                      <Text style={styles.docStatusTextGreen}>Licenciado / Em dia</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* CARD 2: MOTORISTA (CNH DIGITAL) */}
+              <View style={styles.docSectionCard}>
+                <View style={styles.docSectionTop}>
+                  <View style={styles.docSectionTitleRow}>
+                    <MaterialCommunityIcons name="card-account-details-outline" size={16} color="#FF7A00" />
+                    <Text style={styles.docSectionTitle}>HABILITAÇÃO DO CONDUTOR</Text>
+                  </View>
+                  <View style={isCnhExpired ? styles.cnhBadgeRed : isCnhExpiringSoon ? styles.cnhBadgeOrange : styles.cnhBadgeGreen}>
+                    <View style={isCnhExpired ? styles.docStatusDotRed : isCnhExpiringSoon ? styles.docStatusDotOrange : styles.docStatusDotGreen} />
+                    <Text style={isCnhExpired ? styles.cnhBadgeTextRed : isCnhExpiringSoon ? styles.cnhBadgeTextOrange : styles.cnhBadgeTextGreen}>
+                      {isCnhExpired ? 'VENCIDA' : isCnhExpiringSoon ? 'VENCENDO' : 'REGULAR'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.docDriverName}>
+                  {summary?.driver?.name || user.name || 'Rael Martins'}
+                </Text>
+
+                <View style={styles.docDetailsDivider} />
+
+                <View style={styles.docDetailsGrid}>
+                  <View style={styles.docDetailRow}>
+                    <Text style={styles.docDetailLabel}>Número CNH:</Text>
+                    <Text style={styles.docDetailValueMono}>
+                      {summary?.driver?.cnhNumber ? `****${summary.driver.cnhNumber.slice(-4)}` : '****2551'} (Cat. {summary?.driver?.cnhCategory || 'B'})
+                    </Text>
+                  </View>
+
+                  <View style={styles.docDetailRow}>
+                    <Text style={styles.docDetailLabel}>Validade da CNH:</Text>
+                    <Text style={styles.docDetailValue}>
+                      {formatCnhDate(summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate) || '04/12/2026'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.docDetailRow}>
+                    <Text style={styles.docDetailLabel}>Exame Toxicológico:</Text>
+                    <Text style={styles.docDetailValueGreen}>Apto / Em dia</Text>
+                  </View>
+                </View>
+
+                {shouldShowCnhAlert && (
+                  <View style={styles.docWarningBox}>
+                    <Ionicons name="warning-outline" size={14} color={isCnhExpired ? '#EF4444' : '#F59E0B'} />
+                    <Text style={[styles.docWarningText, { color: isCnhExpired ? '#EF4444' : '#F59E0B' }]}>
+                      {isCnhExpired
+                        ? 'CNH vencida: início de novas viagens bloqueado.'
+                        : `Sua CNH vence em ${daysUntilCnhExpires} dia(s). Renove com antecedência.`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.docsModalCloseFullBtn}
+              onPress={() => setDocsModalOpen(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.docsModalCloseFullText}>Fechar Documentação</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1311,6 +1449,267 @@ const styles = StyleSheet.create({
     color: '#8E9DA8',
     textAlign: 'center',
     lineHeight: 16,
+  },
+  /* MODAL DOCUMENTOS */
+  docsModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(8, 11, 12, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  docsModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '85%',
+    backgroundColor: '#0F1215',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  docsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A2126',
+  },
+  docsModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  docsModalIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 122, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docsModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#E7EBEE',
+  },
+  docsModalSubtitle: {
+    fontSize: 11,
+    color: '#8E9DA8',
+    marginTop: 1,
+  },
+  docsModalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#161B1E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+  },
+  docsModalScroll: {
+    marginBottom: 16,
+  },
+  docSectionCard: {
+    backgroundColor: '#080B0C',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    padding: 14,
+    marginBottom: 12,
+  },
+  docSectionTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  docSectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  docSectionTitle: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#8E9DA8',
+    letterSpacing: 0.5,
+  },
+  plateBadge: {
+    backgroundColor: '#161B1E',
+    borderWidth: 1,
+    borderColor: '#FF7A00',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  plateBadgeText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FF7A00',
+    letterSpacing: 1,
+  },
+  docVehicleName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    marginBottom: 4,
+  },
+  docDriverName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    marginBottom: 4,
+  },
+  docDetailsDivider: {
+    height: 1,
+    backgroundColor: '#161B1E',
+    marginVertical: 10,
+  },
+  docDetailsGrid: {
+    gap: 7,
+  },
+  docDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  docDetailLabel: {
+    fontSize: 11.5,
+    color: '#8E9DA8',
+  },
+  docDetailValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#CAD2D9',
+  },
+  docDetailValueMono: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#CAD2D9',
+  },
+  docDetailValueGreen: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#34D399',
+  },
+  docStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  docStatusDotGreen: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
+  },
+  docStatusDotOrange: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+  },
+  docStatusDotRed: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EF4444',
+  },
+  docStatusTextGreen: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#34D399',
+  },
+  cnhBadgeGreen: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+  },
+  cnhBadgeTextGreen: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#34D399',
+    letterSpacing: 0.5,
+  },
+  cnhBadgeOrange: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+  },
+  cnhBadgeTextOrange: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#F59E0B',
+    letterSpacing: 0.5,
+  },
+  cnhBadgeRed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+  },
+  cnhBadgeTextRed: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#EF4444',
+    letterSpacing: 0.5,
+  },
+  docWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#1A2126',
+  },
+  docWarningText: {
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 15,
+  },
+  docsModalCloseFullBtn: {
+    backgroundColor: '#1E262B',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docsModalCloseFullText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#CAD2D9',
   },
 });
 
