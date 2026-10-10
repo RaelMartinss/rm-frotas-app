@@ -8,12 +8,14 @@ import { FuelScreen } from './src/screens/FuelScreen';
 import { TripScreen } from './src/screens/TripScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { SOSScreen } from './src/screens/SOSScreen';
+import { ChecklistScreen } from './src/screens/ChecklistScreen';
 import { api } from './src/services/api.service';
 import { colors } from './src/theme/colors';
 import { User } from './src/types/auth';
 
 type AppTab = 'home' | 'history' | 'profile';
-type ActiveModal = 'fuel' | 'trip' | null;
+type ActiveModal = 'fuel' | 'trip' | 'sos' | 'checklist' | null;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -89,6 +91,26 @@ export default function App() {
             />
           ) : activeModal === 'trip' ? (
             <TripScreen onBack={() => setActiveModal(null)} onTripStarted={handleTripStarted} />
+          ) : activeModal === 'sos' ? (
+            <SOSScreen
+              onBack={() => setActiveModal(null)}
+              onSuccess={() => {
+                api.getCurrentTrip().then((s) => {
+                  if (s?.trip) setActiveTrip(s.trip);
+                }).catch(() => {});
+              }}
+              activeTrip={activeTrip}
+            />
+          ) : activeModal === 'checklist' ? (
+            <ChecklistScreen
+              onBack={() => setActiveModal(null)}
+              onSuccess={() => {
+                api.getCurrentTrip().then((s) => {
+                  if (s?.trip) setActiveTrip(s.trip);
+                }).catch(() => {});
+              }}
+              activeTrip={activeTrip}
+            />
           ) : activeTab === 'history' ? (
             <HistoryScreen />
           ) : activeTab === 'profile' ? (
@@ -101,6 +123,8 @@ export default function App() {
               onNavigateToTrip={() => setActiveModal('trip')}
               onNavigateToHistory={() => setActiveTab('history')}
               onNavigateToProfile={() => setActiveTab('profile')}
+              onNavigateToSOS={() => setActiveModal('sos')}
+              onNavigateToChecklist={() => setActiveModal('checklist')}
               activeTrip={activeTrip}
               onTripCompleted={() => setActiveTrip(null)}
             />

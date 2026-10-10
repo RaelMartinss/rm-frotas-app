@@ -123,3 +123,50 @@ export interface RecordLocationBatchDTO {
   recordedAt?: string;
   pings?: LocationPingDTO[];
 }
+
+export type IncidentCategory = 'PNEU' | 'MECANICA' | 'ELETRICA' | 'ACIDENTE' | 'ATRASO' | 'OUTRO';
+
+export interface ReportIncidentDTO {
+  tripId?: string;
+  vehicleId?: string;
+  category: IncidentCategory;
+  description?: string;
+  latitude?: number;
+  longitude?: number;
+  locationAddress?: string;
+  photoUrl?: string;
+  photos?: string[];
+  checklist?: any;
+}
+
+export interface ReportIncidentResult {
+  message: string;
+  incidentId: string;
+  protocol: string;
+  category: IncidentCategory;
+  description: string;
+  recordedAt: string;
+  latitude?: number;
+  longitude?: number;
+  locationAddress?: string;
+  photoUrl?: string;
+  photos?: string[];
+}
+
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  category: 'SEGURANCA' | 'ILUMINACAO' | 'MECANICA' | 'FLUIDOS' | 'DOCUMENTOS';
+  status: 'OK' | 'DEFECT' | 'NOT_APPLICABLE';
+  notes?: string;
+}
+
+export interface TripChecklistDTO {
+  tripId: string;
+  items: ChecklistItem[];
+  notes?: string;
+  signature?: string;
+  allApproved?: boolean;
+  vehiclePlate?: string;
+}
+

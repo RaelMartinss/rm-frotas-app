@@ -27,6 +27,8 @@ interface HomeScreenProps {
   onNavigateToTrip: () => void;
   onNavigateToHistory: () => void;
   onNavigateToProfile: () => void;
+  onNavigateToSOS?: () => void;
+  onNavigateToChecklist?: () => void;
   activeTrip?: any;
   onTripCompleted?: () => void;
 }
@@ -38,6 +40,8 @@ export function HomeScreen({
   onNavigateToTrip,
   onNavigateToHistory,
   onNavigateToProfile,
+  onNavigateToSOS,
+  onNavigateToChecklist,
   activeTrip: propActiveTrip,
   onTripCompleted,
 }: HomeScreenProps) {
@@ -509,7 +513,10 @@ export function HomeScreen({
           {/* 2. SOS Alerta */}
           <TouchableOpacity
             style={styles.interCard}
-            onPress={handleSOS}
+            onPress={() => {
+              if (onNavigateToSOS) onNavigateToSOS();
+              else handleSOS();
+            }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons name="shield-alert-outline" size={26} color="#FFFFFF" />
@@ -519,7 +526,10 @@ export function HomeScreen({
           {/* 3. Checklist */}
           <TouchableOpacity
             style={styles.interCard}
-            onPress={onNavigateToTrip}
+            onPress={() => {
+              if (onNavigateToChecklist) onNavigateToChecklist();
+              else onNavigateToTrip();
+            }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons name="clipboard-check-outline" size={26} color="#FFFFFF" />
