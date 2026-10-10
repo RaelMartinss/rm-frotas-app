@@ -84,13 +84,34 @@ export function HomeScreen({
   const isTripInProgress = activeTrip?.status === 'IN_PROGRESS';
   const pendingReceipts = summary?.pendingReceiptsCount ?? 1;
 
+  const [gpsActive, setGpsActive] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
+
   // Ativa automaticamente o rastreamento GPS em segundo plano durante viagens EM ROTA
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
     if (activeTrip?.id && isTripInProgress) {
-      locationService.startTracking(activeTrip.id);
+      locationService.startTracking(activeTrip.id).then((started) => {
+        setGpsActive(started);
+      });
+
+      unsubscribe = locationService.onLocationUpdate((loc) => {
+        setGpsActive(true);
+        if (loc.coords.speed !== null && loc.coords.speed !== undefined) {
+          const kmh = Math.round(Math.max(0, loc.coords.speed * 3.6));
+          setCurrentSpeed(kmh);
+        }
+      });
     } else {
       locationService.stopTracking();
+      setGpsActive(false);
+      setCurrentSpeed(null);
     }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [activeTrip?.id, isTripInProgress]);
 
   const isCnhExpired = summary?.driver?.isCnhExpired ?? false;
@@ -374,9 +395,15 @@ export function HomeScreen({
               </Text>
             </View>
 
-            <View style={styles.gpsBadge}>
-              <View style={styles.gpsDot} />
-              <Text style={styles.gpsText}>GPS ATIVO</Text>
+            <View style={gpsActive ? styles.gpsBadge : styles.gpsBadgeInactive}>
+              <View style={gpsActive ? styles.gpsDot : styles.gpsDotInactive} />
+              <Text style={gpsActive ? styles.gpsText : styles.gpsTextInactive}>
+                {gpsActive
+                  ? currentSpeed !== null && currentSpeed > 0
+                    ? `${currentSpeed} km/h • GPS ATIVO`
+                    : 'GPS ATIVO'
+                  : 'GPS PAUSADO'}
+              </Text>
             </View>
           </View>
 
@@ -756,6 +783,28 @@ const styles = StyleSheet.create({
   },
   gpsText: {
     color: '#34D399',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  gpsBadgeInactive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(148, 163, 184, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.25)',
+  },
+  gpsDotInactive: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#94A3B8',
+    marginRight: 5,
+  },
+  gpsTextInactive: {
+    color: '#94A3B8',
     fontSize: 9,
     fontWeight: '800',
   },

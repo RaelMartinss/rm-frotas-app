@@ -249,7 +249,7 @@ class ApiService {
   ): Promise<{ message: string; savedCount?: number }> {
     if (!pings || pings.length === 0) return { message: 'Nenhum ping para enviar' };
 
-    const payload = pings.length === 1 ? pings[0] : { pings };
+    const payload = { pings };
 
     const res = await this.authenticatedFetch(`/driver-portal/trips/${tripId}/location`, {
       method: 'POST',
