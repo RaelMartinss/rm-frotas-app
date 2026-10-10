@@ -801,7 +801,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: DADOS PESSOAIS                                                     */}
       {/* ========================================================================= */}
-      <Modal visible={editProfileModalOpen} transparent animationType="slide">
+      <Modal
+        visible={editProfileModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditProfileModalOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
@@ -876,7 +881,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: ALTERAR SENHA                                                      */}
       {/* ========================================================================= */}
-      <Modal visible={passwordModalOpen} transparent animationType="slide">
+      <Modal
+        visible={passwordModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPasswordModalOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
@@ -961,7 +971,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: NOTIFICAÇÕES                                                       */}
       {/* ========================================================================= */}
-      <Modal visible={notificationsModalOpen} transparent animationType="slide">
+      <Modal
+        visible={notificationsModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNotificationsModalOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
@@ -1029,7 +1044,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: LOCALIZAÇÃO                                                        */}
       {/* ========================================================================= */}
-      <Modal visible={locationModalOpen} transparent animationType="slide">
+      <Modal
+        visible={locationModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLocationModalOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
@@ -1075,7 +1095,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: AJUDA E SUPORTE                                                    */}
       {/* ========================================================================= */}
-      <Modal visible={supportModalOpen} transparent animationType="slide">
+      <Modal
+        visible={supportModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSupportModalOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
@@ -1123,7 +1148,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: TERMOS DE USO                                                      */}
       {/* ========================================================================= */}
-      <Modal visible={termsModalOpen} transparent animationType="slide">
+      <Modal
+        visible={termsModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTermsModalOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
@@ -1157,7 +1187,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: POLÍTICA DE PRIVACIDADE                                            */}
       {/* ========================================================================= */}
-      <Modal visible={privacyModalOpen} transparent animationType="slide">
+      <Modal
+        visible={privacyModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPrivacyModalOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
@@ -1190,7 +1225,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       {/* ========================================================================= */}
       {/* MODAL: DOWNLOAD DA ATUALIZAÇÃO NATIVA                                     */}
       {/* ========================================================================= */}
-      <Modal visible={downloadState.isDownloading} transparent animationType="fade">
+      <Modal
+        visible={downloadState.isDownloading}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
         <View style={styles.downloadModalBackdrop}>
           <View style={styles.downloadModalCard}>
             <View style={styles.downloadModalIconBox}>
@@ -1607,7 +1647,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#222A2F',
     borderRadius: 20,
-    overflow: 'hidden',
   },
   groupedRow: {
     flexDirection: 'row',
