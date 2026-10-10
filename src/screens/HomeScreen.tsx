@@ -69,6 +69,12 @@ export function HomeScreen({
   const isTripInProgress = activeTrip?.status === 'IN_PROGRESS';
   const pendingReceipts = summary?.pendingReceiptsCount ?? 1;
 
+  const isCnhExpired = summary?.driver?.isCnhExpired ?? false;
+  const daysUntilCnhExpires = summary?.driver?.daysUntilCnhExpires;
+  const isCnhExpiringSoon =
+    daysUntilCnhExpires !== undefined ? daysUntilCnhExpires <= 30 && daysUntilCnhExpires >= 0 : false;
+  const shouldShowCnhAlert = isCnhExpired || isCnhExpiringSoon;
+
   const formatCnhDate = (rawDate?: string) => {
     if (!rawDate) return '18/11/2028';
     try {
@@ -196,12 +202,6 @@ export function HomeScreen({
 
         {/* Ações da Direita */}
         <View style={styles.headerRightActions}>
-          {biometricAvailable && (
-            <View style={styles.bioBadge}>
-              <Text style={styles.bioBadgeText}>👆 BIO</Text>
-            </View>
-          )}
-
           <TouchableOpacity
             style={styles.headerIconButton}
             onPress={onNavigateToProfile}
@@ -232,24 +232,49 @@ export function HomeScreen({
           />
         }
       >
-        {/* BANNER PROATIVO DE CNH */}
-        <View style={styles.cnhBanner}>
-          <View style={styles.cnhBannerLeft}>
-            <View style={styles.cnhIconBox}>
-              <Ionicons name="shield-checkmark" size={18} color="#34D399" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cnhTitle}>
-                {summary?.driver
-                  ? `CNH Regularizada • Categoria ${summary.driver.cnhCategory || 'E'}`
-                  : 'CNH Regularizada • Categoria E'}
-              </Text>
-              <Text style={styles.cnhDesc}>
-                {`Validade até ${formatCnhDate(summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate)}. Liberação total para viagem.`}
-              </Text>
+        {/* BANNER PROATIVO DE CNH (Apenas exibido se estiver vencendo ou vencida) */}
+        {shouldShowCnhAlert && (
+          <View
+            style={[
+              styles.cnhBanner,
+              isCnhExpired ? styles.cnhBannerExpired : styles.cnhBannerWarning,
+            ]}
+          >
+            <View style={styles.cnhBannerLeft}>
+              <View
+                style={[
+                  styles.cnhIconBox,
+                  isCnhExpired ? styles.cnhIconBoxExpired : styles.cnhIconBoxWarning,
+                ]}
+              >
+                <Ionicons
+                  name={isCnhExpired ? 'alert-circle' : 'warning'}
+                  size={18}
+                  color={isCnhExpired ? '#EF4444' : '#F59E0B'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.cnhTitle,
+                    isCnhExpired ? styles.cnhTitleExpired : styles.cnhTitleWarning,
+                  ]}
+                >
+                  {isCnhExpired
+                    ? 'CNH Vencida • Regularização Necessária'
+                    : `CNH Vencendo em ${daysUntilCnhExpires} dia${daysUntilCnhExpires === 1 ? '' : 's'}`}
+                </Text>
+                <Text style={styles.cnhDesc}>
+                  {isCnhExpired
+                    ? 'Sua CNH está vencida. Regularize para poder operar viagens.'
+                    : `Validade até ${formatCnhDate(
+                        summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate
+                      )}. Agende a renovação.`}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* ALERTA PROATIVO DE PENDÊNCIA DE COMPROVANTE */}
         {pendingReceipts > 0 && (
@@ -497,19 +522,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  bioBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.35)',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  bioBadgeText: {
-    color: '#34D399',
-    fontSize: 9,
-    fontWeight: '800',
-  },
   headerIconButton: {
     width: 36,
     height: 36,
@@ -536,11 +548,17 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   cnhBanner: {
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
     borderRadius: 18,
+    borderWidth: 1,
     padding: 12,
+  },
+  cnhBannerWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  cnhBannerExpired: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
   },
   cnhBannerLeft: {
     flexDirection: 'row',
@@ -551,14 +569,24 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cnhIconBoxWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  cnhIconBoxExpired: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
   },
   cnhTitle: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#34D399',
+  },
+  cnhTitleWarning: {
+    color: '#FBBF24',
+  },
+  cnhTitleExpired: {
+    color: '#F87171',
   },
   cnhDesc: {
     fontSize: 10,
