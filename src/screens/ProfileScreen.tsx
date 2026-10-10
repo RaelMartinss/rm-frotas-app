@@ -33,12 +33,12 @@ interface ProfileScreenProps {
 }
 
 function formatCpf(cpf?: string): string {
-  if (!cpf) return '***.023.***-04';
+  if (!cpf) return '***.***.***-04';
   const digits = cpf.replace(/\D/g, '');
-  if (digits.length === 11) {
-    return `***.${digits.substring(3, 6)}.***-${digits.substring(9, 11)}`;
+  if (digits.length >= 2) {
+    return `***.***.***-${digits.slice(-2)}`;
   }
-  return cpf;
+  return '***.***.***-04';
 }
 
 function maskCnh(cnh?: string): string {
@@ -454,35 +454,49 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
           {/* LINHA DE DADOS DOCUMENTAIS (3 COLUNAS) */}
           <View style={styles.docCard}>
             {/* 1. CPF */}
-            <View style={styles.docCol}>
+            <View style={styles.docColCpf}>
               <View style={styles.docLabelRow}>
                 <Ionicons name="person-outline" size={13} color="#8E9DA8" />
                 <Text style={styles.docLabelText}>CPF</Text>
               </View>
-              <Text style={styles.docValueText} numberOfLines={1}>
+              <Text
+                style={styles.docValueText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
                 {formatCpf(driverCpf)}
               </Text>
             </View>
 
-            {/* 2. CNH */}
-            <View style={[styles.docCol, styles.docColDivider]}>
+            {/* 2. CNH - apenas categoria sem números */}
+            <View style={[styles.docColCnh, styles.docColDivider]}>
               <View style={styles.docLabelRow}>
                 <MaterialCommunityIcons name="card-account-details-outline" size={13} color="#8E9DA8" />
                 <Text style={styles.docLabelText}>CNH</Text>
               </View>
-              <Text style={styles.docValueText} numberOfLines={1}>
-                {maskCnh(driverCnh)}
+              <Text
+                style={styles.docValueText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                Categoria {driverCnhCat}
               </Text>
-              <Text style={styles.docSubText}>Categoria: {driverCnhCat}</Text>
             </View>
 
             {/* 3. Validade CNH */}
-            <View style={styles.docCol}>
+            <View style={styles.docColValidade}>
               <View style={styles.docLabelRow}>
                 <Ionicons name="calendar-outline" size={13} color="#8E9DA8" />
-                <Text style={styles.docLabelText}>VALIDADE CNH</Text>
+                <Text style={styles.docLabelText}>VALIDADE</Text>
               </View>
-              <Text style={styles.docValueText} numberOfLines={1}>
+              <Text
+                style={styles.docValueText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
                 {formatDate(driverCnhExp)}
               </Text>
             </View>
@@ -1321,8 +1335,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#11161A',
     position: 'relative',
     minHeight: 114,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     justifyContent: 'center',
   },
   heroBackgroundImage: {
@@ -1333,6 +1345,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   heroOverlayGradientLeft: {
     position: 'absolute',
@@ -1355,6 +1368,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
     zIndex: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   heroAvatarWrapper: {
     position: 'relative',
@@ -1444,12 +1459,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#222A2F',
     borderRadius: 20,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
-  docCol: {
+  docColCpf: {
+    flex: 1.15,
+    minWidth: 0,
+    gap: 3,
+  },
+  docColCnh: {
     flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  docColValidade: {
+    flex: 1.05,
     minWidth: 0,
     gap: 3,
   },
@@ -1457,7 +1484,8 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: '#222A2F',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
+    marginHorizontal: 4,
   },
   docLabelRow: {
     flexDirection: 'row',
