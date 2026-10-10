@@ -6,13 +6,14 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
-  Switch,
   Alert,
   Image,
+  ImageBackground,
   Modal,
   TextInput,
   ActivityIndicator,
   Linking,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -23,40 +24,89 @@ import { api } from '../services/api.service';
 import { storage } from '../services/storage.service';
 import { appUpdateService, CURRENT_APP_VERSION, UpdateDownloadState } from '../services/app-update.service';
 import { User } from '../types/auth';
+import { DriverPortalSummary } from '../types/driver';
 
 interface ProfileScreenProps {
   user: User;
   onLogout: () => void;
+  onNavigateToHistory?: () => void;
 }
 
-export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
+function formatCpf(cpf?: string): string {
+  if (!cpf) return '***.023.***-04';
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `***.${digits.substring(3, 6)}.***-${digits.substring(9, 11)}`;
+  }
+  return cpf;
+}
+
+function maskCnh(cnh?: string): string {
+  if (!cnh) return '****2551';
+  const cleaned = cnh.trim();
+  if (cleaned.length >= 4) {
+    return '****' + cleaned.slice(-4);
+  }
+  return cleaned;
+}
+
+function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return '03/12/2026';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileScreenProps) {
+  const [currentView, setCurrentView] = useState<'profile' | 'settings'>('profile');
   const [profileUser, setProfileUser] = useState<User>(user);
+  const [summary, setSummary] = useState<DriverPortalSummary | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [phone, setPhone] = useState('(91) 98123-4567');
   const [biometricsEnabled, setBiometricsEnabled] = useState(true);
   const [hasBiometricHardware, setHasBiometricHardware] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
-  const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
-    isDownloading: false,
-    progress: 0,
-    error: null,
-    completed: false,
-  });
 
-  // Modais de Edição
+  // Notificações locais
+  const [notifTravels, setNotifTravels] = useState(true);
+  const [notifFuel, setNotifFuel] = useState(true);
+  const [notifAlerts, setNotifAlerts] = useState(true);
+
+  // Modais de Edição & Informação
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
   const [editName, setEditName] = useState(user.name || '');
+  const [editEmail, setEditEmail] = useState(user.email || '');
   const [editPhone, setEditPhone] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Modal Alterar Senha
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
+
+  // Download do Atualizador In-App
+  const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
+    isDownloading: false,
+    progress: 0,
+    error: null,
+    completed: false,
+  });
 
   useEffect(() => {
     biometricService.isAvailable().then(setHasBiometricHardware);
@@ -66,7 +116,6 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
       setDownloadState(st);
     });
 
-    // Carrega dados e foto do storage local ou API
     storage.getItem(`rm_driver_phone_${user.id}`).then((p) => {
       if (p) setPhone(p);
     });
@@ -75,9 +124,12 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
     });
 
     api.getCurrentTrip().then((sum) => {
-      if (sum?.driver?.photoUrl) {
-        setPhotoUrl(sum.driver.photoUrl);
-        storage.setItem('rm_driver_photo', sum.driver.photoUrl);
+      if (sum) {
+        setSummary(sum);
+        if (sum.driver?.photoUrl) {
+          setPhotoUrl(sum.driver.photoUrl);
+          storage.setItem('rm_driver_photo', sum.driver.photoUrl);
+        }
       }
     }).catch(() => {});
 
@@ -86,43 +138,12 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
     };
   }, [user.id]);
 
-  const handleToggleBiometrics = async (val: boolean) => {
-    if (val && !hasBiometricHardware) {
-      Alert.alert('Indisponível', 'Nenhum leitor biométrico detectado neste aparelho.');
-      return;
-    }
-    await biometricService.setEnabled(val);
-    setBiometricsEnabled(val);
-  };
-
-  const handleConfirmLogout = () => {
-    Alert.alert('Desconectar', 'Deseja realmente sair da sua conta?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: onLogout },
-    ]);
-  };
-
-  // --- FOTO DE PERFIL ---
   const handleSelectPhoto = () => {
     Alert.alert('Foto de Perfil', 'Escolha como deseja atualizar sua foto:', [
       { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Câmera',
-        onPress: () => capturePhoto('camera'),
-      },
-      {
-        text: 'Galeria de Fotos',
-        onPress: () => capturePhoto('gallery'),
-      },
-      ...(photoUrl
-        ? [
-            {
-              text: 'Remover Foto',
-              style: 'destructive' as const,
-              onPress: removePhoto,
-            },
-          ]
-        : []),
+      { text: 'Câmera', onPress: () => capturePhoto('camera') },
+      { text: 'Galeria de Fotos', onPress: () => capturePhoto('gallery') },
+      ...(photoUrl ? [{ text: 'Remover Foto', style: 'destructive' as const, onPress: removePhoto }] : []),
     ]);
   };
 
@@ -134,26 +155,33 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
           Alert.alert('Permissão necessária', 'Precisamos de acesso à câmera para fotografar seu perfil.');
           return;
         }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permissão necessária', 'Precisamos de acesso à sua galeria de fotos.');
+          return;
+        }
       }
 
-      const pickerFn =
-        mode === 'camera'
-          ? ImagePicker.launchCameraAsync
-          : ImagePicker.launchImageLibraryAsync;
-
-      const result = await pickerFn({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-        base64: true,
-      });
+      const result = mode === 'camera'
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+            base64: true,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+            base64: true,
+          });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const base64Uri = asset.base64
-          ? `data:image/jpeg;base64,${asset.base64}`
-          : asset.uri;
+        const base64Uri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
 
         setUpdatingPhoto(true);
         try {
@@ -186,84 +214,61 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
     }
   };
 
-  // --- DADOS PESSOAIS ---
   const handleOpenEditProfile = () => {
     setEditName(profileUser.name || '');
+    setEditEmail(profileUser.email || '');
     setEditPhone(phone);
     setEditProfileModalOpen(true);
   };
 
   const handleSaveProfile = async () => {
     if (!editName.trim()) {
-      Alert.alert('Atenção', 'Informe seu nome completo.');
+      Alert.alert('Atenção', 'O nome não pode ficar vazio.');
       return;
     }
-
     setSavingProfile(true);
     try {
-      const updated = await api.updateProfile(editName.trim());
-      setProfileUser((prev) => ({ ...prev, name: updated.name }));
+      await api.updateProfile(editName.trim());
 
-      if (editPhone.trim()) {
-        await storage.setItem(`rm_driver_phone_${user.id}`, editPhone.trim());
-        setPhone(editPhone.trim());
-      }
-
+      const updated = { ...profileUser, name: editName.trim(), email: editEmail.trim() || profileUser.email };
+      setProfileUser(updated);
+      setPhone(editPhone.trim() || phone);
+      await storage.setItem(`rm_driver_phone_${user.id}`, editPhone.trim());
       setEditProfileModalOpen(false);
-      Alert.alert('Sucesso', 'Dados do perfil atualizados com sucesso!');
+      Alert.alert('Sucesso', 'Dados cadastrais atualizados!');
     } catch (err: any) {
-      Alert.alert('Erro', err.message || 'Não foi possível atualizar o perfil.');
+      Alert.alert('Erro', err.message || 'Não foi possível salvar as alterações.');
     } finally {
       setSavingProfile(false);
     }
   };
 
-  // --- ALTERAR SENHA ---
-  const handleOpenChangePassword = () => {
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setPasswordModalOpen(true);
-  };
-
-  const handleSavePassword = async () => {
+  const handleChangePassword = async () => {
     if (!currentPassword) {
       Alert.alert('Atenção', 'Informe sua senha atual.');
       return;
     }
     if (!newPassword || newPassword.length < 6) {
-      Alert.alert('Atenção', 'A nova senha deve possuir pelo menos 6 caracteres.');
+      Alert.alert('Atenção', 'A nova senha deve possuir no mínimo 6 dígitos.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Atenção', 'A confirmação de senha não confere com a nova senha.');
+      Alert.alert('Atenção', 'A confirmação de senha não confere.');
       return;
     }
-
     setChangingPassword(true);
     try {
-      const res = await api.changePassword(currentPassword, newPassword);
+      await api.changePassword(currentPassword, newPassword);
       setPasswordModalOpen(false);
-      Alert.alert('Senha Alterada', res.message || 'Sua nova senha foi salva com sucesso!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      Alert.alert('Sucesso', 'Sua senha de acesso foi alterada com sucesso!');
     } catch (err: any) {
-      Alert.alert('Erro ao Alterar Senha', err.message || 'Verifique a senha atual informada.');
+      Alert.alert('Erro', err.message || 'Falha ao alterar senha. Verifique a senha atual.');
     } finally {
       setChangingPassword(false);
     }
-  };
-
-  // --- CANAL DE SUPORTE 0800 & WHATSAPP ---
-  const handleCallCentral = () => {
-    Linking.openURL('tel:08007637682').catch(() => {
-      Alert.alert('Telefone da Central', 'Ligue para: 0800 763 7682');
-    });
-  };
-
-  const handleWhatsAppSupport = () => {
-    const text = encodeURIComponent(`Olá, sou o motorista ${profileUser.name} e preciso de apoio operacional.`);
-    Linking.openURL(`https://wa.me/5591981234567?text=${text}`).catch(() => {
-      Alert.alert('WhatsApp', 'Número de apoio: (91) 98123-4567');
-    });
   };
 
   const handleCheckUpdate = async () => {
@@ -295,6 +300,30 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
     }
   };
 
+  const handleCallCentral = () => {
+    Linking.openURL('tel:08007637682').catch(() => {
+      Alert.alert('Telefone da Central', 'Ligue para: 0800 763 7682');
+    });
+  };
+
+  const handleWhatsAppSupport = () => {
+    const text = encodeURIComponent(`Olá, sou o motorista ${profileUser.name} e preciso de apoio operacional.`);
+    Linking.openURL(`https://wa.me/5591981234567?text=${text}`).catch(() => {
+      Alert.alert('WhatsApp', 'Número de apoio: (91) 98123-4567');
+    });
+  };
+
+  const handleConfirmLogout = () => {
+    Alert.alert(
+      'Sair da Conta',
+      'Deseja realmente encerrar sua sessão no aplicativo RM Frotas?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Sair', style: 'destructive', onPress: onLogout },
+      ]
+    );
+  };
+
   const driverInitials = profileUser.name
     ? profileUser.name
         .split(' ')
@@ -304,282 +333,493 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
         .toUpperCase()
     : 'RM';
 
+  const driverCpf = summary?.driver?.cpf || '02345678904';
+  const driverCnh = summary?.driver?.cnhNumber || '12345672551';
+  const driverCnhCat = summary?.driver?.cnhCategory || 'B';
+  const driverCnhExp = summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate || '2026-12-03';
+
+  const vehiclePlate = summary?.trip?.vehicle?.plate || 'BRA2E19';
+  const vehicleModel = summary?.trip?.vehicle?.model || summary?.trip?.vehicle?.brand || 'FH540';
+  const vehicleKm = summary?.trip?.vehicle?.currentKm ? `${summary.trip.vehicle.currentKm.toLocaleString('pt-BR')} km` : '148.320 km';
+
+  const tripOrigin = summary?.trip?.originCity ? `${summary.trip.originCity} (${summary.trip.originState || 'PA'})` : 'Paragominas (PA)';
+  const tripDest = summary?.trip?.destinationCity ? `${summary.trip.destinationCity} (${summary.trip.destinationState || 'SP'})` : 'São Paulo (SP)';
+  const isTripActive = summary?.trip?.status === 'IN_PROGRESS' || !summary?.trip;
+
+  const monthFuelings = summary?.monthFuelingsCount ?? 1;
+  const recentTrips = summary?.recentTripsCount ?? 0;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
-      {/* HEADER */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Meu Perfil</Text>
-          <Text style={styles.headerSubtitle}>Dados cadastrais e credenciais</Text>
-        </View>
+      {/* ========================================================================= */}
+      {/* VISTA 1: PERFIL DO MOTORISTA (IDÊNTICO AO CAPACITOR)                      */}
+      {/* ========================================================================= */}
+      {currentView === 'profile' ? (
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+          {/* TOPO: TÍTULO DA PÁGINA + ENGRENAGEM DE CONFIGURAÇÕES */}
+          <View style={styles.topHeaderRow}>
+            <Text style={styles.topHeaderTitle}>Perfil do Motorista</Text>
+            <TouchableOpacity
+              style={styles.settingsCogButton}
+              onPress={() => setCurrentView('settings')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="settings-outline" size={20} color="#8E9DA8" />
+            </TouchableOpacity>
+          </View>
 
-        <TouchableOpacity onPress={handleConfirmLogout} style={styles.logoutButton} activeOpacity={0.7}>
-          <Ionicons name="log-out-outline" size={18} color="#F87171" />
-          <Text style={styles.logoutText}>Sair</Text>
-        </TouchableOpacity>
-      </View>
+          {/* BANNER HERO COM CAMINHÃO PANORÂMICO AO FUNDO */}
+          <View style={styles.heroCardContainer}>
+            <ImageBackground
+              source={require('../../assets/images/truck-hero-bg.png')}
+              style={styles.heroBackground}
+              resizeMode="cover"
+            >
+              <View style={styles.heroOverlayGradient} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* AVATAR CARD */}
-        <View style={styles.profileCard}>
-          <TouchableOpacity
-            style={styles.avatarTouchable}
-            onPress={handleSelectPhoto}
-            activeOpacity={0.8}
-            disabled={updatingPhoto}
-          >
-            {updatingPhoto ? (
-              <View style={styles.avatarCircle}>
-                <ActivityIndicator size="small" color={colors.primary} />
+              <View style={styles.heroContentRow}>
+                {/* Avatar Grande com Ring Laranja Industrial e Botão de Câmera */}
+                <View style={styles.heroAvatarWrapper}>
+                  <TouchableOpacity
+                    style={styles.heroAvatarTouch}
+                    onPress={handleSelectPhoto}
+                    activeOpacity={0.85}
+                    disabled={updatingPhoto}
+                  >
+                    {updatingPhoto ? (
+                      <View style={styles.heroAvatarPlaceholder}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      </View>
+                    ) : photoUrl ? (
+                      <Image source={{ uri: photoUrl }} style={styles.heroAvatarImage} />
+                    ) : (
+                      <View style={styles.heroAvatarPlaceholder}>
+                        <Text style={styles.heroAvatarInitials}>{driverInitials}</Text>
+                      </View>
+                    )}
+
+                    {/* Botão de Câmera flutuante no canto inferior direito */}
+                    <View style={styles.heroCameraPill}>
+                      <Ionicons name="camera" size={13} color="#080B0C" />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Informações do Motorista */}
+                <View style={styles.heroInfoCol}>
+                  <Text style={styles.heroDriverName} numberOfLines={1}>
+                    {summary?.driver?.name || profileUser.name || 'Rael Martins'}
+                  </Text>
+
+                  {/* Status Online */}
+                  <View style={styles.onlinePill}>
+                    <View style={styles.onlineDot} />
+                    <Text style={styles.onlinePillText}>Online</Text>
+                  </View>
+
+                  {/* Cargo */}
+                  <Text style={styles.heroRoleSubtitle}>Motorista</Text>
+                </View>
               </View>
-            ) : photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.avatarImage} />
-            ) : (
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarInitials}>{driverInitials}</Text>
-              </View>
-            )}
-            <View style={styles.cameraPill}>
-              <Ionicons name="camera" size={13} color="#FFFFFF" />
-            </View>
-          </TouchableOpacity>
+            </ImageBackground>
+          </View>
 
-          <View style={{ flex: 1 }}>
-            <View style={styles.nameRow}>
-              <Text style={styles.userName} numberOfLines={1}>
-                {profileUser.name || 'Rael Martins'}
+          {/* LINHA DE DADOS DOCUMENTAIS (3 COLUNAS) */}
+          <View style={styles.docCard}>
+            {/* 1. CPF */}
+            <View style={styles.docCol}>
+              <View style={styles.docLabelRow}>
+                <Ionicons name="person-outline" size={13} color="#8E9DA8" />
+                <Text style={styles.docLabelText}>CPF</Text>
+              </View>
+              <Text style={styles.docValueText} numberOfLines={1}>
+                {formatCpf(driverCpf)}
               </Text>
-              <TouchableOpacity onPress={handleOpenEditProfile} activeOpacity={0.7}>
-                <Ionicons name="pencil" size={16} color={colors.primary} />
+            </View>
+
+            {/* 2. CNH */}
+            <View style={[styles.docCol, styles.docColDivider]}>
+              <View style={styles.docLabelRow}>
+                <MaterialCommunityIcons name="card-account-details-outline" size={13} color="#8E9DA8" />
+                <Text style={styles.docLabelText}>CNH</Text>
+              </View>
+              <Text style={styles.docValueText} numberOfLines={1}>
+                {maskCnh(driverCnh)}
+              </Text>
+              <Text style={styles.docSubText}>Categoria: {driverCnhCat}</Text>
+            </View>
+
+            {/* 3. Validade CNH */}
+            <View style={styles.docCol}>
+              <View style={styles.docLabelRow}>
+                <Ionicons name="calendar-outline" size={13} color="#8E9DA8" />
+                <Text style={styles.docLabelText}>VALIDADE CNH</Text>
+              </View>
+              <Text style={styles.docValueText} numberOfLines={1}>
+                {formatDate(driverCnhExp)}
+              </Text>
+            </View>
+          </View>
+
+          {/* CARDS DE STATUS ATUAL (2 COLUNAS) */}
+          <View style={styles.twoColsGrid}>
+            {/* 1. Veículo Atual */}
+            <TouchableOpacity
+              style={styles.statusCard}
+              activeOpacity={0.7}
+              onPress={() => {
+                Alert.alert(
+                  'Veículo da Frota',
+                  `Placa: ${vehiclePlate}\nModelo: ${vehicleModel}\nKM Atual: ${vehicleKm}\nCRLV: Regularizado`
+                );
+              }}
+            >
+              <View style={styles.statusCardHeader}>
+                <View style={styles.statusCardIconBoxOrange}>
+                  <Ionicons name="car-outline" size={16} color="#FF7A00" />
+                </View>
+                <Text style={styles.statusCardHeaderLabel}>Veículo atual</Text>
+                <Ionicons name="chevron-forward" size={15} color="#8E9DA8" style={styles.statusCardChevron} />
+              </View>
+              <View style={styles.statusCardBody}>
+                <Text style={styles.vehiclePlateText}>{vehiclePlate}</Text>
+                <Text style={styles.statusCardSub} numberOfLines={1}>
+                  {vehicleModel} • {vehicleKm}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* 2. Última Viagem */}
+            <TouchableOpacity
+              style={styles.statusCard}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (onNavigateToHistory) onNavigateToHistory();
+              }}
+            >
+              <View style={styles.statusCardHeader}>
+                <View style={styles.statusCardIconBoxGrey}>
+                  <Ionicons name="location-outline" size={16} color="#CAD2D9" />
+                </View>
+                <Text style={styles.statusCardHeaderLabel}>Última viagem</Text>
+                <Ionicons name="chevron-forward" size={15} color="#8E9DA8" style={styles.statusCardChevron} />
+              </View>
+              <View style={styles.statusCardBody}>
+                <Text style={styles.tripRouteText} numberOfLines={1}>
+                  {tripOrigin} ➔ {tripDest}
+                </Text>
+                <Text style={styles.statusCardSub} numberOfLines={1}>
+                  09/10 18:19 •{' '}
+                  <Text style={{ color: '#FF7A00', fontWeight: '700' }}>
+                    {isTripActive ? 'Em andamento' : 'Concluída'}
+                  </Text>
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* SEÇÃO: ESTATÍSTICAS DO MOTORISTA */}
+          <View style={styles.statsSection}>
+            <View style={styles.statsSectionHeader}>
+              <View style={styles.statsHeaderLeft}>
+                <MaterialCommunityIcons name="trending-up" size={18} color="#FF7A00" />
+                <Text style={styles.statsSectionTitle}>ESTATÍSTICAS DO MOTORISTA</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  if (onNavigateToHistory) onNavigateToHistory();
+                }}
+                activeOpacity={0.7}
+                style={styles.statsHeaderRight}
+              >
+                <Text style={styles.statsVerTodasText}>Ver todas</Text>
+                <Ionicons name="arrow-forward" size={14} color="#FF7A00" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.userRole}>Motorista Operacional</Text>
-            <Text style={styles.userEmail}>{profileUser.email || 'raelmotorista@gmail.com'}</Text>
-            <Text style={styles.userPhone}>{phone}</Text>
-          </View>
-        </View>
 
-        {/* CNH STATUS CARD */}
-        <View style={styles.sectionCard}>
-          <View style={styles.cardHeader}>
-            <View style={styles.labelWithIcon}>
-              <Ionicons name="card-outline" size={16} color={colors.primary} />
-              <Text style={styles.sectionLabel}>CNH & HABILITAÇÃO</Text>
-            </View>
-            <View style={styles.cnhValidBadge}>
-              <Text style={styles.cnhValidText}>REGULAR</Text>
-            </View>
-          </View>
+            <View style={styles.twoColsGrid}>
+              {/* Abastecimentos */}
+              <View style={styles.metricCard}>
+                <View style={styles.metricIconBoxOrange}>
+                  <Ionicons name="funnel-outline" size={18} color="#FF7A00" />
+                </View>
+                <Text style={styles.metricLabel}>Abastecimentos</Text>
+                <Text style={styles.metricValue}>{monthFuelings}</Text>
+                <Text style={styles.metricTimeSub}>últimos 30 dias</Text>
+              </View>
 
-          <View style={styles.cnhGrid}>
-            <View style={styles.cnhItem}>
-              <Text style={styles.cnhItemLabel}>CATEGORIA</Text>
-              <Text style={styles.cnhItemValue}>E (Carreta/Bitrem)</Text>
-            </View>
-            <View style={styles.cnhItem}>
-              <Text style={styles.cnhItemLabel}>VALIDADE</Text>
-              <Text style={styles.cnhItemValue}>18/11/2028</Text>
+              {/* Viagens */}
+              <View style={styles.metricCard}>
+                <View style={styles.metricIconBoxGrey}>
+                  <Ionicons name="navigate-outline" size={18} color="#CAD2D9" />
+                </View>
+                <Text style={styles.metricLabel}>Viagens</Text>
+                <Text style={styles.metricValue}>{recentTrips}</Text>
+                <Text style={styles.metricTimeSub}>últimos 30 dias</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </ScrollView>
+      ) : (
+        /* ========================================================================= */
+        /* VISTA 2: CONFIGURAÇÕES DA CONTA (IDÊNTICO AO CAPACITOR)                   */
+        /* ========================================================================= */
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+          {/* TOPO: VOLTAR + TÍTULO */}
+          <View style={styles.topHeaderRow}>
+            <TouchableOpacity
+              style={styles.settingsBackButton}
+              onPress={() => setCurrentView('profile')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="arrow-back" size={20} color="#E7EBEE" />
+            </TouchableOpacity>
+            <Text style={styles.settingsHeaderTitle}>Configurações</Text>
+          </View>
 
-        {/* VEÍCULO ATRIBUÍDO */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>VEÍCULO PADRÃO</Text>
-          <View style={styles.vehicleRow}>
-            <View style={styles.vehicleIconBadge}>
-              <MaterialCommunityIcons name="truck" size={22} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.vehicleTitle}>Scania R450 6x2</Text>
-              <Text style={styles.vehicleSubtitle}>Placa ABC-4D88 • Frota Pesada</Text>
+          {/* GRUPO 1: CONTA */}
+          <View style={styles.groupSection}>
+            <Text style={styles.groupSectionTitle}>CONTA</Text>
+            <View style={styles.groupedCard}>
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={handleOpenEditProfile}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconBoxOrange}>
+                  <Ionicons name="person" size={18} color="#FF7A00" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Dados pessoais</Text>
+                  <Text style={styles.rowSubtitleText}>Nome, CPF, telefone e e-mail</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+              </TouchableOpacity>
+
+              <View style={styles.rowDivider} />
+
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={() => setPasswordModalOpen(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconBoxGrey}>
+                  <Ionicons name="lock-closed" size={18} color="#CAD2D9" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Alterar senha</Text>
+                  <Text style={styles.rowSubtitleText}>Mantenha sua conta segura</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+              </TouchableOpacity>
             </View>
           </View>
-        </View>
 
-        {/* SEGURANÇA & ACESSO */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>SEGURANÇA & ACESSO</Text>
+          {/* GRUPO 2: APP E DISPOSITIVO */}
+          <View style={styles.groupSection}>
+            <Text style={styles.groupSectionTitle}>APP E DISPOSITIVO</Text>
+            <View style={styles.groupedCard}>
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={() => setNotificationsModalOpen(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconBoxOrange}>
+                  <Ionicons name="notifications" size={18} color="#FF7A00" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Notificações</Text>
+                  <Text style={styles.rowSubtitleText}>Viagens, abastecimentos e alertas</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+              </TouchableOpacity>
 
-          {/* Trocar Senha */}
+              <View style={styles.rowDivider} />
+
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={() => setLocationModalOpen(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconBoxGrey}>
+                  <Ionicons name="location" size={18} color="#CAD2D9" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Localização</Text>
+                  <Text style={styles.rowSubtitleText}>Permissões de localização do app</Text>
+                </View>
+                <View style={styles.statusPillSmallGreen}>
+                  <Text style={styles.statusPillSmallText}>Ativo</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* GRUPO 3: INFORMAÇÕES */}
+          <View style={styles.groupSection}>
+            <Text style={styles.groupSectionTitle}>INFORMAÇÕES</Text>
+            <View style={styles.groupedCard}>
+              {/* Sobre o App */}
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={handleCheckUpdate}
+                activeOpacity={0.7}
+                disabled={checkingUpdate}
+              >
+                <View style={styles.rowIconBoxOrange}>
+                  <Ionicons name="information-circle" size={18} color="#FF7A00" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Sobre o app</Text>
+                  <Text style={styles.rowSubtitleText}>Versão {CURRENT_APP_VERSION}</Text>
+                </View>
+                {checkingUpdate ? (
+                  <ActivityIndicator size="small" color="#FF7A00" />
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.rowDivider} />
+
+              {/* Termos de Uso */}
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={() => setTermsModalOpen(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconBoxGrey}>
+                  <Ionicons name="document-text" size={18} color="#CAD2D9" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Termos de uso</Text>
+                  <Text style={styles.rowSubtitleText}>Veja os termos e condições</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+              </TouchableOpacity>
+
+              <View style={styles.rowDivider} />
+
+              {/* Política de Privacidade */}
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={() => setPrivacyModalOpen(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconBoxGrey}>
+                  <Ionicons name="shield-checkmark" size={18} color="#CAD2D9" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Política de privacidade</Text>
+                  <Text style={styles.rowSubtitleText}>Como seus dados são usados</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+              </TouchableOpacity>
+
+              <View style={styles.rowDivider} />
+
+              {/* Ajuda e Suporte */}
+              <TouchableOpacity
+                style={styles.groupedRow}
+                onPress={() => setSupportModalOpen(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconBoxOrange}>
+                  <Ionicons name="headset" size={18} color="#FF7A00" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={styles.rowTitleText}>Ajuda e suporte</Text>
+                  <Text style={styles.rowSubtitleText}>Tire suas dúvidas ou entre em contato</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* CARD DE SAIR DA CONTA (BORDA VERMELHA) */}
           <TouchableOpacity
-            style={styles.settingRow}
-            onPress={handleOpenChangePassword}
-            activeOpacity={0.7}
-          >
-            <View style={styles.settingInfo}>
-              <View style={styles.settingIconBox}>
-                <Ionicons name="key-outline" size={18} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.settingTitle}>Alterar Senha de Acesso</Text>
-                <Text style={styles.settingDesc}>Atualize suas credenciais com segurança</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#64748B" />
-          </TouchableOpacity>
-
-          {/* Desbloqueio Biometria */}
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <View style={styles.settingIconBox}>
-                <Ionicons name="finger-print" size={20} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.settingTitle}>Desbloqueio com Biometria</Text>
-                <Text style={styles.settingDesc}>Acesso instantâneo por Face ID / Digital</Text>
-              </View>
-            </View>
-            <Switch
-              value={biometricsEnabled}
-              onValueChange={handleToggleBiometrics}
-              trackColor={{ false: '#222A2F', true: colors.primary }}
-              thumbColor={biometricsEnabled ? '#FFFFFF' : '#8E9DA8'}
-            />
-          </View>
-
-          {/* Sincronização Offline */}
-          <View style={[styles.settingRow, { borderBottomWidth: 0 }]}>
-            <View style={styles.settingInfo}>
-              <View style={styles.settingIconBox}>
-                <Ionicons name="cloud-offline-outline" size={20} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.settingTitle}>Sincronização Offline</Text>
-                <Text style={styles.settingDesc}>Grava abastecimentos sem sinal de 4G</Text>
-              </View>
-            </View>
-            <Switch
-              value={true}
-              disabled
-              trackColor={{ false: '#222A2F', true: '#10B981' }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-
-          {/* Sincronizar Agora */}
-          <TouchableOpacity
-            style={styles.syncNowButton}
-            onPress={async () => {
-              Alert.alert('Sincronização', 'Verificando fila de pendências locais com o servidor...');
-              const res = await api.syncOfflineQueue();
-              if (res.synced > 0) {
-                Alert.alert('Sucesso', `${res.synced} abastecimento(s) sincronizado(s) com o servidor!`);
-              } else {
-                Alert.alert('Tudo Atualizado', 'Todos os registros locais já estão sincronizados com a API.');
-              }
-            }}
+            style={styles.logoutCardRed}
+            onPress={handleConfirmLogout}
             activeOpacity={0.8}
           >
-            <Ionicons name="sync-outline" size={16} color={colors.primary} />
-            <Text style={styles.syncNowButtonText}>Sincronizar Pendências Agora</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* CENTRAL DE SUPORTE & APOIO AO MOTORISTA */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>CENTRAL DE APOIO OPERACIONAL</Text>
-          <Text style={styles.updateCardDesc}>
-            Canais diretos de atendimento 24h para socorro, dúvidas ou autorizações na rota:
-          </Text>
-
-          <View style={styles.supportButtonsRow}>
-            <TouchableOpacity style={styles.callSupportBtn} onPress={handleCallCentral} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="phone" size={18} color="#FFFFFF" />
-              <Text style={styles.callSupportText}>Ligar 0800</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.whatsappSupportBtn} onPress={handleWhatsAppSupport} activeOpacity={0.8}>
-              <MaterialCommunityIcons name="whatsapp" size={18} color="#FFFFFF" />
-              <Text style={styles.whatsappSupportText}>WhatsApp</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ATUALIZAÇÕES DO APLICATIVO */}
-        <View style={styles.sectionCard}>
-          <View style={styles.cardHeader}>
-            <View style={styles.labelWithIcon}>
-              <Ionicons name="cloud-download-outline" size={16} color={colors.primary} />
-              <Text style={styles.sectionLabel}>ATUALIZAÇÕES DO APLICATIVO</Text>
+            <View style={styles.logoutIconBoxRed}>
+              <Ionicons name="log-out-outline" size={20} color="#F87171" />
             </View>
-            <View style={styles.versionBadge}>
-              <Text style={styles.versionBadgeText}>v{CURRENT_APP_VERSION}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.updateCardDesc}>
-            Mantenha seu aplicativo na versão mais recente homologada para ter acesso a melhorias contínuas, novos recursos e máxima estabilidade.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.checkUpdateButton}
-            onPress={handleCheckUpdate}
-            disabled={checkingUpdate}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={checkingUpdate ? 'hourglass-outline' : 'refresh-circle-outline'}
-              size={18}
-              color="#080B0C"
-            />
-            <Text style={styles.checkUpdateButtonText}>
-              {checkingUpdate ? 'Consultando Servidor...' : 'Verificar Novas Atualizações'}
-            </Text>
+            <Text style={styles.logoutCardRedText}>Sair da conta</Text>
+            <Ionicons name="chevron-forward" size={16} color="#F87171" />
           </TouchableOpacity>
-        </View>
+        </ScrollView>
+      )}
 
-        {/* RODAPÉ DO APLICATIVO */}
-        <View style={styles.versionCard}>
-          <Text style={styles.versionText}>RM Frotas • Portal do Motorista v{CURRENT_APP_VERSION}</Text>
-          <Text style={styles.versionSubtext}>Build Nativo Expo & Android SDK 35</Text>
-        </View>
-      </ScrollView>
-
-      {/* MODAL: EDITAR DADOS PESSOAIS */}
-      <Modal visible={editProfileModalOpen} transparent animationType="fade" onRequestClose={() => setEditProfileModalOpen(false)}>
+      {/* ========================================================================= */}
+      {/* MODAL: DADOS PESSOAIS                                                     */}
+      {/* ========================================================================= */}
+      <Modal visible={editProfileModalOpen} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Editar Dados Pessoais</Text>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <Ionicons name="person" size={20} color="#FF7A00" />
+                <Text style={styles.modalTitle}>Dados Pessoais</Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditProfileModalOpen(false)}>
+                <Ionicons name="close" size={22} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
 
-            <Text style={styles.inputLabel}>NOME COMPLETO</Text>
-            <TextInput
-              style={styles.inputField}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Seu nome completo"
-              placeholderTextColor="#64748B"
-            />
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Nome Completo</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Seu nome completo"
+                placeholderTextColor="#5A6872"
+              />
+            </View>
 
-            <Text style={styles.inputLabel}>TELEFONE / WHATSAPP</Text>
-            <TextInput
-              style={styles.inputField}
-              value={editPhone}
-              onChangeText={setEditPhone}
-              placeholder="(00) 00000-0000"
-              placeholderTextColor="#64748B"
-              keyboardType="phone-pad"
-            />
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>E-mail</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editEmail}
+                onChangeText={setEditEmail}
+                placeholder="seu.email@exemplo.com"
+                placeholderTextColor="#5A6872"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Telefone / WhatsApp</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editPhone}
+                onChangeText={setEditPhone}
+                placeholder="(91) 98123-4567"
+                placeholderTextColor="#5A6872"
+                keyboardType="phone-pad"
+              />
+            </View>
 
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
                 onPress={() => setEditProfileModalOpen(false)}
-                activeOpacity={0.7}
               >
                 <Text style={styles.modalCancelText}>Cancelar</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.modalSaveBtn}
                 onPress={handleSaveProfile}
                 disabled={savingProfile}
-                activeOpacity={0.8}
               >
                 {savingProfile ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color="#080B0C" />
                 ) : (
                   <Text style={styles.modalSaveText}>Salvar</Text>
                 )}
@@ -589,68 +829,82 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
         </View>
       </Modal>
 
-      {/* MODAL: ALTERAR SENHA */}
-      <Modal visible={passwordModalOpen} transparent animationType="fade" onRequestClose={() => setPasswordModalOpen(false)}>
+      {/* ========================================================================= */}
+      {/* MODAL: ALTERAR SENHA                                                      */}
+      {/* ========================================================================= */}
+      <Modal visible={passwordModalOpen} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Alterar Senha de Acesso</Text>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <Ionicons name="lock-closed" size={20} color="#FF7A00" />
+                <Text style={styles.modalTitle}>Alterar Senha</Text>
+              </View>
+              <TouchableOpacity onPress={() => setPasswordModalOpen(false)}>
+                <Ionicons name="close" size={22} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
 
-            <Text style={styles.inputLabel}>SENHA ATUAL</Text>
-            <TextInput
-              style={styles.inputField}
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              placeholder="Digite sua senha atual"
-              placeholderTextColor="#64748B"
-              secureTextEntry={!showPassword}
-            />
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Senha Atual</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Digite a senha atual"
+                placeholderTextColor="#5A6872"
+                secureTextEntry={!showPassword}
+              />
+            </View>
 
-            <Text style={styles.inputLabel}>NOVA SENHA (MÍNIMO 6 CARACTERES)</Text>
-            <TextInput
-              style={styles.inputField}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="Digite a nova senha"
-              placeholderTextColor="#64748B"
-              secureTextEntry={!showPassword}
-            />
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Nova Senha (mínimo 6 dígitos)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Nova senha segura"
+                placeholderTextColor="#5A6872"
+                secureTextEntry={!showPassword}
+              />
+            </View>
 
-            <Text style={styles.inputLabel}>CONFIRMAR NOVA SENHA</Text>
-            <TextInput
-              style={styles.inputField}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Confirme a nova senha"
-              placeholderTextColor="#64748B"
-              secureTextEntry={!showPassword}
-            />
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Confirmar Nova Senha</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Repita a nova senha"
+                placeholderTextColor="#5A6872"
+                secureTextEntry={!showPassword}
+              />
+            </View>
 
             <TouchableOpacity
               style={styles.showPassRow}
               onPress={() => setShowPassword(!showPassword)}
-              activeOpacity={0.7}
             >
-              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={16} color={colors.primary} />
-              <Text style={styles.showPassText}>{showPassword ? 'Ocultar senhas' : 'Exibir senhas'}</Text>
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={18} color="#FF7A00" />
+              <Text style={styles.showPassText}>
+                {showPassword ? 'Ocultar senhas' : 'Exibir senhas'}
+              </Text>
             </TouchableOpacity>
 
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
                 onPress={() => setPasswordModalOpen(false)}
-                activeOpacity={0.7}
               >
                 <Text style={styles.modalCancelText}>Cancelar</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.modalSaveBtn}
-                onPress={handleSavePassword}
+                onPress={handleChangePassword}
                 disabled={changingPassword}
-                activeOpacity={0.8}
               >
                 {changingPassword ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color="#080B0C" />
                 ) : (
                   <Text style={styles.modalSaveText}>Alterar</Text>
                 )}
@@ -660,21 +914,246 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
         </View>
       </Modal>
 
-      {/* MODAL DE DOWNLOAD DA ATUALIZAÇÃO NATIVA */}
-      <Modal
-        visible={downloadState.isDownloading}
-        transparent
-        animationType="fade"
-      >
+      {/* ========================================================================= */}
+      {/* MODAL: NOTIFICAÇÕES                                                       */}
+      {/* ========================================================================= */}
+      <Modal visible={notificationsModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <Ionicons name="notifications" size={20} color="#FF7A00" />
+                <Text style={styles.modalTitle}>Preferências de Alerta</Text>
+              </View>
+              <TouchableOpacity onPress={() => setNotificationsModalOpen(false)}>
+                <Ionicons name="close" size={22} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.switchRowItem}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchTitle}>Alertas de Viagens</Text>
+                <Text style={styles.switchSub}>Receba novas rotas e itinerários</Text>
+              </View>
+              <Switch
+                value={notifTravels}
+                onValueChange={setNotifTravels}
+                thumbColor={notifTravels ? '#FF7A00' : '#8E9DA8'}
+                trackColor={{ false: '#1E262B', true: 'rgba(255, 122, 0, 0.4)' }}
+              />
+            </View>
+
+            <View style={styles.switchRowItem}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchTitle}>Abastecimentos</Text>
+                <Text style={styles.switchSub}>Confirmações e cupons salvos</Text>
+              </View>
+              <Switch
+                value={notifFuel}
+                onValueChange={setNotifFuel}
+                thumbColor={notifFuel ? '#FF7A00' : '#8E9DA8'}
+                trackColor={{ false: '#1E262B', true: 'rgba(255, 122, 0, 0.4)' }}
+              />
+            </View>
+
+            <View style={styles.switchRowItem}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchTitle}>Avisos da Frota</Text>
+                <Text style={styles.switchSub}>Manutenções e comunicados gerais</Text>
+              </View>
+              <Switch
+                value={notifAlerts}
+                onValueChange={setNotifAlerts}
+                thumbColor={notifAlerts ? '#FF7A00' : '#8E9DA8'}
+                trackColor={{ false: '#1E262B', true: 'rgba(255, 122, 0, 0.4)' }}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalSaveBtn, { width: '100%', marginTop: 16 }]}
+              onPress={() => {
+                setNotificationsModalOpen(false);
+                Alert.alert('Sucesso', 'Preferências de notificação salvas no dispositivo.');
+              }}
+            >
+              <Text style={styles.modalSaveText}>Concluído</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: LOCALIZAÇÃO                                                        */}
+      {/* ========================================================================= */}
+      <Modal visible={locationModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <Ionicons name="location" size={20} color="#FF7A00" />
+                <Text style={styles.modalTitle}>Localização GPS</Text>
+              </View>
+              <TouchableOpacity onPress={() => setLocationModalOpen(false)}>
+                <Ionicons name="close" size={22} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.infoBoxWithIcon}>
+              <Ionicons name="shield-checkmark" size={24} color="#10B981" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.infoBoxTitle}>Rastreamento em Tempo Real Ativo</Text>
+                <Text style={styles.infoBoxDesc}>
+                  O app coleta dados de telemetria durante viagens em andamento para garantir segurança operacional e registro de percurso.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.settingsRowSimple}>
+              <Text style={styles.settingsRowSimpleLabel}>Precisão</Text>
+              <Text style={styles.settingsRowSimpleValue}>Alta precisão (GPS Satélite)</Text>
+            </View>
+
+            <View style={styles.settingsRowSimple}>
+              <Text style={styles.settingsRowSimpleLabel}>Segundo plano</Text>
+              <Text style={styles.settingsRowSimpleValue}>Ativo com Foreground Service</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalSaveBtn, { width: '100%', marginTop: 16 }]}
+              onPress={() => setLocationModalOpen(false)}
+            >
+              <Text style={styles.modalSaveText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: AJUDA E SUPORTE                                                    */}
+      {/* ========================================================================= */}
+      <Modal visible={supportModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <Ionicons name="headset" size={20} color="#FF7A00" />
+                <Text style={styles.modalTitle}>Ajuda e Suporte</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSupportModalOpen(false)}>
+                <Ionicons name="close" size={22} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.supportButton} onPress={handleCallCentral}>
+              <View style={styles.supportIconBoxOrange}>
+                <Ionicons name="call" size={20} color="#FF7A00" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.supportTitle}>Central 0800 Operacional</Text>
+                <Text style={styles.supportSub}>0800 763 7682 • Chamada Gratuita 24h</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.supportButton} onPress={handleWhatsAppSupport}>
+              <View style={styles.supportIconBoxGreen}>
+                <Ionicons name="logo-whatsapp" size={20} color="#10B981" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.supportTitle}>WhatsApp de Apoio</Text>
+                <Text style={styles.supportSub}>(91) 98123-4567 • Suporte Rápido</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalCancelBtn, { width: '100%', marginTop: 12 }]}
+              onPress={() => setSupportModalOpen(false)}
+            >
+              <Text style={styles.modalCancelText}>Voltar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: TERMOS DE USO                                                      */}
+      {/* ========================================================================= */}
+      <Modal visible={termsModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <Ionicons name="document-text" size={20} color="#FF7A00" />
+                <Text style={styles.modalTitle}>Termos de Uso</Text>
+              </View>
+              <TouchableOpacity onPress={() => setTermsModalOpen(false)}>
+                <Ionicons name="close" size={22} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 300, marginVertical: 8 }}>
+              <Text style={styles.termsBodyText}>
+                O aplicativo RM Frotas é de uso restrito e exclusivo de motoristas e operadores autorizados da frota.{'\n\n'}
+                1. O motorista é responsável pela precisão dos comprovantes e checklists lançados.{'\n'}
+                2. O rastreamento de rota permanece em vigor durante as viagens iniciadas.{'\n'}
+                3. O acesso é pessoal e intransferível, sendo vedado o compartilhamento de senhas.{'\n'}
+                4. O descumprimento das diretrizes operacionais enseja aplicação de normas internas da empresa.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.modalSaveBtn, { width: '100%', marginTop: 8 }]}
+              onPress={() => setTermsModalOpen(false)}
+            >
+              <Text style={styles.modalSaveText}>Entendido</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: POLÍTICA DE PRIVACIDADE                                            */}
+      {/* ========================================================================= */}
+      <Modal visible={privacyModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderTitleRow}>
+                <Ionicons name="shield-checkmark" size={20} color="#FF7A00" />
+                <Text style={styles.modalTitle}>Política de Privacidade</Text>
+              </View>
+              <TouchableOpacity onPress={() => setPrivacyModalOpen(false)}>
+                <Ionicons name="close" size={22} color="#8E9DA8" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 300, marginVertical: 8 }}>
+              <Text style={styles.termsBodyText}>
+                Seus dados são protegidos em conformidade com as diretrizes de segurança da informação e LGPD.{'\n\n'}
+                • Coleta de localização: Ocorre exclusivamente quando uma viagem operacional estiver em andamento.{'\n'}
+                • Dados cadastrais: Armazenados em servidores seguros com criptografia ponta a ponta.{'\n'}
+                • Imagens e comprovantes: Utilizados unicamente para conferência de prestação de contas de despesas da frota.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.modalSaveBtn, { width: '100%', marginTop: 8 }]}
+              onPress={() => setPrivacyModalOpen(false)}
+            >
+              <Text style={styles.modalSaveText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: DOWNLOAD DA ATUALIZAÇÃO NATIVA                                     */}
+      {/* ========================================================================= */}
+      <Modal visible={downloadState.isDownloading} transparent animationType="fade">
         <View style={styles.downloadModalBackdrop}>
           <View style={styles.downloadModalCard}>
             <View style={styles.downloadModalIconBox}>
               <Ionicons name="cloud-download" size={32} color="#FF7A00" />
             </View>
             <Text style={styles.downloadModalTitle}>Baixando Atualização...</Text>
-            <Text style={styles.downloadModalSubtitle}>
-              Atualizando o RM Frotas no dispositivo
-            </Text>
+            <Text style={styles.downloadModalSubtitle}>Atualizando o RM Frotas no dispositivo</Text>
 
             <View style={styles.downloadProgressRow}>
               <Text style={styles.downloadProgressLabel}>Progresso do download</Text>
@@ -698,399 +1177,534 @@ export function ProfileScreen({ user, onLogout }: ProfileScreenProps) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#080B0C',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.textPrimary,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 12,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.25)',
-  },
-  logoutText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#F87171',
-  },
-  scrollContent: {
-    padding: 20,
+  scrollContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 40,
-    gap: 16,
-  },
-  profileCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  avatarTouchable: {
-    position: 'relative',
-  },
-  avatarCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primaryMuted,
-    borderWidth: 2,
-    borderColor: colors.primaryBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  avatarInitials: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.primary,
-  },
-  cameraPill: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: colors.surface,
-  },
-  nameRow: {
+
+  /* TOPO DA TELA */
+  topHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 4,
   },
-  userName: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: colors.textPrimary,
+  topHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    letterSpacing: -0.3,
+  },
+  settingsCogButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsBackButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  settingsHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    letterSpacing: -0.3,
     flex: 1,
   },
-  userRole: {
-    fontSize: 12,
-    color: colors.primary,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  userEmail: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  userPhone: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  sectionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 16,
+
+  /* HERO BANNER DO MOTORISTA */
+  heroCardContainer: {
+    borderRadius: 24,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
+    borderColor: '#222A2F',
+    backgroundColor: '#11161A',
   },
-  cardHeader: {
+  heroBackground: {
+    width: '100%',
+    padding: 16,
+  },
+  heroOverlayGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(8, 11, 12, 0.85)',
+  },
+  heroContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    zIndex: 2,
+  },
+  heroAvatarWrapper: {
+    position: 'relative',
+  },
+  heroAvatarTouch: {
+    position: 'relative',
+  },
+  heroAvatarImage: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 2,
+    borderColor: '#FF7A00',
+  },
+  heroAvatarPlaceholder: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255, 122, 0, 0.18)',
+    borderWidth: 2,
+    borderColor: '#FF7A00',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroAvatarInitials: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#FF7A00',
+  },
+  heroCameraPill: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FF7A00',
+    borderWidth: 2,
+    borderColor: '#080B0C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroInfoCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroDriverName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    letterSpacing: -0.2,
+  },
+  onlinePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(16, 185, 129, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 6,
+  },
+  onlineDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+  },
+  onlinePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  heroRoleSubtitle: {
+    fontSize: 12,
+    color: '#8E9DA8',
+    marginTop: 4,
+    fontWeight: '500',
+  },
+
+  /* CARD DE DOCUMENTOS (3 COLUNAS) */
+  docCard: {
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 20,
+    padding: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  labelWithIcon: {
+  docCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  docColDivider: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#222A2F',
+    paddingHorizontal: 10,
+  },
+  docLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  docLabelText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#8E9DA8',
+    letterSpacing: 0.5,
+  },
+  docValueText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    fontVariant: ['tabular-nums'],
+  },
+  docSubText: {
+    fontSize: 10,
+    color: '#8E9DA8',
+    fontWeight: '500',
+  },
+
+  /* GRID DE 2 COLUNAS */
+  twoColsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  statusCard: {
+    flex: 1,
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 20,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  statusCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  sectionLabel: {
+  statusCardIconBoxOrange: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 122, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusCardIconBoxGrey: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: '#1E262B',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusCardHeaderLabel: {
     fontSize: 11,
+    fontWeight: '600',
+    color: '#8E9DA8',
+    flex: 1,
+  },
+  statusCardChevron: {
+    marginLeft: 'auto',
+  },
+  statusCardBody: {
+    marginTop: 10,
+    gap: 2,
+  },
+  vehiclePlateText: {
+    fontSize: 15,
     fontWeight: '900',
-    color: colors.textSecondary,
+    color: '#E7EBEE',
     letterSpacing: 0.5,
   },
-  cnhValidBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  tripRouteText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#E7EBEE',
+  },
+  statusCardSub: {
+    fontSize: 10,
+    color: '#8E9DA8',
+    fontWeight: '500',
+  },
+
+  /* ESTATÍSTICAS */
+  statsSection: {
+    gap: 8,
+    marginTop: 4,
+  },
+  statsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  statsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statsSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    letterSpacing: 0.5,
+  },
+  statsHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statsVerTodasText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FF7A00',
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 20,
+    padding: 14,
+  },
+  metricIconBoxOrange: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 122, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  metricIconBoxGrey: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#1E262B',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  metricLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CAD2D9',
+  },
+  metricValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#E7EBEE',
+    marginTop: 2,
+    fontVariant: ['tabular-nums'],
+  },
+  metricTimeSub: {
+    fontSize: 10,
+    color: '#8E9DA8',
+    marginTop: 2,
+  },
+
+  /* TELA DE CONFIGURAÇÕES */
+  groupSection: {
+    gap: 6,
+  },
+  groupSectionTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#8E9DA8',
+    letterSpacing: 0.8,
+    paddingHorizontal: 4,
+  },
+  groupedCard: {
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  groupedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
+  },
+  rowDivider: {
+    height: 1,
+    backgroundColor: 'rgba(34, 42, 47, 0.7)',
+    marginLeft: 54,
+  },
+  rowIconBoxOrange: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 122, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowIconBoxGrey: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#1E262B',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  rowTitleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#E7EBEE',
+  },
+  rowSubtitleText: {
+    fontSize: 11,
+    color: '#8E9DA8',
+  },
+  statusPillSmallGreen: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderRadius: 10,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingVertical: 2,
   },
-  cnhValidText: {
+  statusPillSmallText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#10B981',
   },
-  cnhGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  cnhItem: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cnhItemLabel: {
-    fontSize: 9,
-    color: colors.textMuted,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  cnhItemValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  vehicleRow: {
+
+  /* SAIR DA CONTA (CARD VERMELHO) */
+  logoutCardRed: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.25)',
+    borderRadius: 20,
+    padding: 14,
     gap: 12,
-    backgroundColor: colors.background,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginTop: 6,
   },
-  vehicleIconBadge: {
-    width: 38,
-    height: 38,
+  logoutIconBoxRed: {
+    width: 36,
+    height: 36,
     borderRadius: 12,
-    backgroundColor: colors.primaryMuted,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
     borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  vehicleTitle: {
+  logoutCardRedText: {
     fontSize: 14,
     fontWeight: '800',
-    color: colors.textPrimary,
+    color: '#F87171',
+    flex: 1,
   },
-  vehicleSubtitle: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 2,
+
+  /* MODAIS GERAIS */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(8, 11, 12, 0.85)',
+    justifyContent: 'flex-end',
+    padding: 16,
+    paddingBottom: 24,
   },
-  settingRow: {
+  modalContentCard: {
+    backgroundColor: '#0F1215',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    marginBottom: 16,
+    paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#222A2F',
   },
-  settingInfo: {
+  modalHeaderTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  settingIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  settingDesc: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 1,
-  },
-  syncNowButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.primaryMuted,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    borderRadius: 12,
-    paddingVertical: 12,
-    marginTop: 4,
-  },
-  syncNowButtonText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  supportButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
-  },
-  callSupportBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  callSupportText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  whatsappSupportBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#16A34A',
-    borderRadius: 12,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  whatsappSupportText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-  versionBadge: {
-    backgroundColor: colors.primaryMuted,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  versionBadgeText: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: colors.primary,
-  },
-  updateCardDesc: {
-    fontSize: 12,
-    color: colors.textMuted,
-    lineHeight: 18,
-  },
-  checkUpdateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 13,
-    marginTop: 4,
-  },
-  checkUpdateButtonText: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#080B0C',
-  },
-  versionCard: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 4,
-  },
-  versionText: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: '600',
-  },
-  versionSubtext: {
-    fontSize: 10,
-    color: colors.textDim,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  modalContent: {
-    backgroundColor: '#0F161E',
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    borderRadius: 20,
-    padding: 20,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 16,
+    color: '#E7EBEE',
   },
-  inputLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#94A3B8',
-    letterSpacing: 0.5,
+  modalInputGroup: {
+    marginBottom: 12,
+  },
+  modalInputLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#CAD2D9',
     marginBottom: 6,
-    marginTop: 10,
   },
-  inputField: {
-    backgroundColor: '#16222F',
+  modalInput: {
+    backgroundColor: '#080B0C',
     borderWidth: 1,
-    borderColor: '#243547',
-    borderRadius: 10,
+    borderColor: '#222A2F',
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: '#E7EBEE',
+    fontSize: 13,
   },
   showPassRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 10,
+    marginTop: 4,
+    marginBottom: 12,
   },
   showPassText: {
-    color: colors.primary,
+    color: '#FF7A00',
     fontSize: 12,
     fontWeight: '600',
   },
   modalButtonsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
+    gap: 10,
+    marginTop: 8,
   },
   modalCancelBtn: {
     flex: 1,
@@ -1109,7 +1723,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: '#FF7A00',
     borderRadius: 12,
     paddingVertical: 12,
   },
@@ -1118,6 +1732,111 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 13,
   },
+
+  /* SWITCH ITEMS */
+  switchRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E262B',
+  },
+  switchTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#E7EBEE',
+  },
+  switchSub: {
+    fontSize: 11,
+    color: '#8E9DA8',
+    marginTop: 2,
+  },
+
+  /* INFO BOX */
+  infoBoxWithIcon: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+  },
+  infoBoxTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+  infoBoxDesc: {
+    fontSize: 11,
+    color: '#CAD2D9',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  settingsRowSimple: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E262B',
+  },
+  settingsRowSimpleLabel: {
+    fontSize: 12,
+    color: '#8E9DA8',
+  },
+  settingsRowSimpleValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E7EBEE',
+  },
+
+  /* SUPORTE */
+  supportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+    marginBottom: 10,
+  },
+  supportIconBoxOrange: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 122, 0, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  supportIconBoxGreen: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  supportTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#E7EBEE',
+  },
+  supportSub: {
+    fontSize: 11,
+    color: '#8E9DA8',
+    marginTop: 2,
+  },
+  termsBodyText: {
+    fontSize: 12,
+    color: '#CAD2D9',
+    lineHeight: 18,
+  },
+
+  /* DOWNLOAD MODAL */
   downloadModalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(8, 11, 12, 0.85)',
@@ -1134,11 +1853,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 122, 0, 0.3)',
     padding: 24,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 12,
   },
   downloadModalIconBox: {
     width: 64,

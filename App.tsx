@@ -120,7 +120,11 @@ export default function App() {
           ) : activeTab === 'history' ? (
             <HistoryScreen />
           ) : activeTab === 'profile' ? (
-            <ProfileScreen user={currentUser} onLogout={handleLogout} />
+            <ProfileScreen
+              user={currentUser}
+              onLogout={handleLogout}
+              onNavigateToHistory={() => setActiveTab('history')}
+            />
           ) : (
             <HomeScreen
               user={currentUser}
