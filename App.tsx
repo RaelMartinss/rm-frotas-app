@@ -10,12 +10,13 @@ import { HistoryScreen } from './src/screens/HistoryScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { SOSScreen } from './src/screens/SOSScreen';
 import { ChecklistScreen } from './src/screens/ChecklistScreen';
+import { RouteScreen } from './src/screens/RouteScreen';
 import { api } from './src/services/api.service';
 import { colors } from './src/theme/colors';
 import { User } from './src/types/auth';
 
 type AppTab = 'home' | 'history' | 'profile';
-type ActiveModal = 'fuel' | 'trip' | 'sos' | 'checklist' | null;
+type ActiveModal = 'fuel' | 'trip' | 'sos' | 'checklist' | 'route' | null;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -111,6 +112,11 @@ export default function App() {
               }}
               activeTrip={activeTrip}
             />
+          ) : activeModal === 'route' ? (
+            <RouteScreen
+              onBack={() => setActiveModal(null)}
+              activeTrip={activeTrip}
+            />
           ) : activeTab === 'history' ? (
             <HistoryScreen />
           ) : activeTab === 'profile' ? (
@@ -125,6 +131,7 @@ export default function App() {
               onNavigateToProfile={() => setActiveTab('profile')}
               onNavigateToSOS={() => setActiveModal('sos')}
               onNavigateToChecklist={() => setActiveModal('checklist')}
+              onNavigateToRoute={() => setActiveModal('route')}
               activeTrip={activeTrip}
               onTripCompleted={() => setActiveTrip(null)}
             />

@@ -17,6 +17,7 @@ import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
 import { locationService } from '../services/location.service';
 import { appUpdateService, UpdateInfo } from '../services/app-update.service';
+import { navigationService } from '../services/navigation.service';
 import { User } from '../types/auth';
 import { DriverPortalSummary, DriverCurrentTrip } from '../types/driver';
 
@@ -29,6 +30,7 @@ interface HomeScreenProps {
   onNavigateToProfile: () => void;
   onNavigateToSOS?: () => void;
   onNavigateToChecklist?: () => void;
+  onNavigateToRoute?: () => void;
   activeTrip?: any;
   onTripCompleted?: () => void;
 }
@@ -42,6 +44,7 @@ export function HomeScreen({
   onNavigateToProfile,
   onNavigateToSOS,
   onNavigateToChecklist,
+  onNavigateToRoute,
   activeTrip: propActiveTrip,
   onTripCompleted,
 }: HomeScreenProps) {
@@ -458,6 +461,30 @@ export function HomeScreen({
             </View>
           </View>
 
+          {/* Botão de Navegação Externa (Waze / Maps) */}
+          <TouchableOpacity
+            style={styles.gpsNavButton}
+            onPress={() => {
+              if (onNavigateToRoute) {
+                onNavigateToRoute();
+              } else {
+                const dest = activeTrip?.destinationCity
+                  ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
+                  : activeTrip?.destination || 'Curitiba (PR)';
+                navigationService.showNavigationOptions(dest);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={styles.gpsNavLeft}>
+              <View style={styles.gpsNavIconWrap}>
+                <MaterialCommunityIcons name="navigation-variant" size={16} color="#05C8F7" />
+              </View>
+              <Text style={styles.gpsNavText}>Navegar no Waze / Google Maps</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#64748B" />
+          </TouchableOpacity>
+
           {/* Botão de Iniciar/Concluir Viagem */}
           <TouchableOpacity
             style={[styles.startTripButton, completing && { opacity: 0.7 }]}
@@ -510,7 +537,25 @@ export function HomeScreen({
             <Text style={styles.interCardTitle}>Abastecer</Text>
           </TouchableOpacity>
 
-          {/* 2. SOS Alerta */}
+          {/* 2. Itinerário & GPS */}
+          <TouchableOpacity
+            style={styles.interCard}
+            onPress={() => {
+              if (onNavigateToRoute) onNavigateToRoute();
+              else {
+                const dest = activeTrip?.destinationCity
+                  ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
+                  : activeTrip?.destination || 'Curitiba (PR)';
+                navigationService.showNavigationOptions(dest);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="map-marker-path" size={26} color="#FFFFFF" />
+            <Text style={styles.interCardTitle}>Itinerário</Text>
+          </TouchableOpacity>
+
+          {/* 3. SOS Alerta */}
           <TouchableOpacity
             style={styles.interCard}
             onPress={() => {
@@ -863,6 +908,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
     marginTop: 1,
+  },
+  gpsNavButton: {
+    backgroundColor: '#0F1822',
+    borderWidth: 1,
+    borderColor: '#1E2F40',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  gpsNavLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  gpsNavIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(5, 200, 247, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gpsNavText: {
+    color: '#05C8F7',
+    fontSize: 12,
+    fontWeight: '800',
   },
   startTripButton: {
     backgroundColor: colors.surfaceElevated,
