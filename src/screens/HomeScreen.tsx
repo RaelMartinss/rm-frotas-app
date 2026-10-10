@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { User } from '../types/auth';
@@ -15,86 +17,288 @@ import { User } from '../types/auth';
 interface HomeScreenProps {
   user: User;
   onLogout: () => void;
+  onNavigateToFuel: () => void;
+  onNavigateToTrip: () => void;
+  onNavigateToHistory: () => void;
+  onNavigateToProfile: () => void;
+  activeTrip?: any;
 }
 
-export function HomeScreen({ user, onLogout }: HomeScreenProps) {
+export function HomeScreen({
+  user,
+  onLogout,
+  onNavigateToFuel,
+  onNavigateToTrip,
+  onNavigateToHistory,
+  onNavigateToProfile,
+  activeTrip,
+}: HomeScreenProps) {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [pendingReceipts, setPendingReceipts] = useState(1);
 
   useEffect(() => {
     biometricService.isAvailable().then(setBiometricAvailable);
   }, []);
 
+  const handleSOS = () => {
+    Alert.alert(
+      '🚨 SOS Alerta Operacional',
+      'Deseja enviar um chamado de socorro prioritário para a central da RM Frotas?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Enviar SOS',
+          style: 'destructive',
+          onPress: () => Alert.alert('Alerta Enviado', 'A central de monitoramento recebeu sua localização.'),
+        },
+      ]
+    );
+  };
+
+  const driverInitials = user.name
+    ? user.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase()
+    : 'RM';
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+
+      {/* CABEÇALHO DO PERFIL & AÇÕES DO TOPO */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.profileHeaderTouch}
+          onPress={onNavigateToProfile}
+          activeOpacity={0.8}
+        >
+          {/* Avatar com fundo laranja translúcido */}
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{driverInitials}</Text>
+          </View>
+          <View style={styles.driverInfoCol}>
+            <Text style={styles.driverName} numberOfLines={1}>
+              {user.name || 'Rael Martins'}
+            </Text>
+            <Text style={styles.driverSubtitle}>Motorista Operacional</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Ações da Direita */}
+        <View style={styles.headerRightActions}>
+          {biometricAvailable && (
+            <View style={styles.bioBadge}>
+              <Text style={styles.bioBadgeText}>👆 BIO</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.headerIconButton}
+            onPress={onNavigateToProfile}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={20} color={colors.textSecondary} />
+            <View style={styles.notifBadge} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerIconButton}
+            onPress={onLogout}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <ScrollView contentContainerStyle={styles.container}>
-        {/* HEADER DO COCKPIT */}
-        <View style={styles.header}>
-          <View>
-            <View style={styles.greetingRow}>
-              <Text style={styles.greeting}>Olá, motorista</Text>
-              {biometricAvailable && (
-                <View style={styles.bioBadge}>
-                  <Text style={styles.bioBadgeText}>👆 BIOMETRIA ATIVA</Text>
-                </View>
-              )}
+        {/* BANNER PROATIVO DE CNH */}
+        <View style={styles.cnhBanner}>
+          <View style={styles.cnhBannerLeft}>
+            <View style={styles.cnhIconBox}>
+              <Ionicons name="shield-checkmark" size={18} color="#34D399" />
             </View>
-            <Text style={styles.driverName}>{user.name || 'Motorista'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cnhTitle}>CNH Regularizada • Categoria E</Text>
+              <Text style={styles.cnhDesc}>Validade até 18/11/2028. Liberação total para viagem.</Text>
+            </View>
           </View>
-          <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Sair</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* CARD PRINCIPAL DA VIAGEM */}
+        {/* ALERTA PROATIVO DE PENDÊNCIA DE COMPROVANTE */}
+        {pendingReceipts > 0 && (
+          <View style={styles.receiptAlert}>
+            <View style={styles.receiptAlertLeft}>
+              <View style={styles.receiptIconBox}>
+                <MaterialCommunityIcons name="gas-station" size={18} color="#FBBF24" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.receiptTitle}>1 cupom fiscal pendente</Text>
+                <Text style={styles.receiptDesc}>Tire a foto para regularizar seu abastecimento.</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.attachButton}
+              onPress={onNavigateToFuel}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.attachButtonText}>Anexar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* CARD PRINCIPAL DA VIAGEM EM DESTAQUE */}
         <View style={styles.tripCard}>
-          <View style={styles.tripBadge}>
-            <View style={styles.badgeDot} />
-            <Text style={styles.badgeText}>EM ESPERA</Text>
-          </View>
-          <Text style={styles.tripTitle}>Pronto para rodar?</Text>
-          <Text style={styles.tripSubtitle}>
-            Selecione o veículo e inicie sua jornada com validação de odômetro.
-          </Text>
+          <View style={styles.tripHeaderRow}>
+            <View style={styles.tripBadge}>
+              <View style={styles.badgeDot} />
+              <Text style={styles.badgeText}>
+                {activeTrip ? 'EM ROTA' : 'PROGRAMADA'}
+              </Text>
+            </View>
 
-          <TouchableOpacity style={styles.startTripButton} activeOpacity={0.85}>
-            <Text style={styles.startTripButtonText}>Iniciar Viagem</Text>
+            <View style={styles.gpsBadge}>
+              <View style={styles.gpsDot} />
+              <Text style={styles.gpsText}>GPS ATIVO</Text>
+            </View>
+          </View>
+
+          {/* Rota Origem → Destino */}
+          <View style={styles.routeRow}>
+            <Text style={styles.routeCity}>
+              {activeTrip?.origin || 'São Paulo (SP)'}
+            </Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
+            <Text style={styles.routeCity}>
+              {activeTrip?.destination || 'Curitiba (PR)'}
+            </Text>
+          </View>
+
+          {/* Horários */}
+          <View style={styles.tripTimingGrid}>
+            <View style={styles.timingItem}>
+              <View style={styles.timingIconBox}>
+                <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={styles.timingLabel}>Saída prevista</Text>
+                <Text style={styles.timingValue}>Hoje • 08:30</Text>
+              </View>
+            </View>
+
+            <View style={styles.timingItem}>
+              <View style={styles.timingIconBox}>
+                <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+              </View>
+              <View>
+                <Text style={styles.timingLabel}>Chegada prevista</Text>
+                <Text style={styles.timingValue}>Hoje • 15:45</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Botão de Iniciar/Concluir Viagem */}
+          <TouchableOpacity
+            style={styles.startTripButton}
+            onPress={onNavigateToTrip}
+            activeOpacity={0.85}
+          >
+            <View style={styles.startTripButtonInner}>
+              <View style={styles.playIconBadge}>
+                <Ionicons
+                  name={activeTrip ? 'checkmark' : 'play'}
+                  size={14}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={styles.startTripButtonText}>
+                {activeTrip ? 'Concluir Viagem' : 'Iniciar Viagem'}
+              </Text>
+            </View>
+            <Ionicons name="arrow-forward" size={18} color="#080B0C" />
           </TouchableOpacity>
         </View>
 
-        {/* AÇÕES RÁPIDAS OPERACIONAIS */}
-        <Text style={styles.sectionTitle}>AÇÕES RÁPIDAS</Text>
+        {/* SEÇÃO AÇÕES RÁPIDAS (GRID 2x2) */}
+        <View style={styles.sectionHeader}>
+          <Ionicons name="flash" size={16} color={colors.primary} />
+          <Text style={styles.sectionTitle}>AÇÕES RÁPIDAS</Text>
+        </View>
+
         <View style={styles.quickGrid}>
-          <TouchableOpacity style={styles.quickCard} activeOpacity={0.8}>
-            <View style={[styles.quickIconBox, { backgroundColor: 'rgba(255, 107, 0, 0.15)' }]}>
-              <Text style={{ fontSize: 20 }}>⛽</Text>
+          {/* 1. Abastecer */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={onNavigateToFuel}
+            activeOpacity={0.8}
+          >
+            <View style={styles.quickCardContent}>
+              <View style={[styles.quickIconBox, { backgroundColor: colors.primaryMuted, borderColor: colors.primaryBorder }]}>
+                <MaterialCommunityIcons name="gas-station" size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.quickCardTitle}>Abastecer</Text>
+                <Text style={styles.quickCardDesc}>Cupom e odômetro</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
             </View>
-            <Text style={styles.quickCardTitle}>Abastecer</Text>
-            <Text style={styles.quickCardDesc}>Registrar cupom</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickCard} activeOpacity={0.8}>
-            <View style={[styles.quickIconBox, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
-              <Text style={{ fontSize: 20 }}>🚨</Text>
+          {/* 2. SOS Alerta */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={handleSOS}
+            activeOpacity={0.8}
+          >
+            <View style={styles.quickCardContent}>
+              <View style={[styles.quickIconBox, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}>
+                <MaterialCommunityIcons name="shield-alert-outline" size={20} color="#F87171" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.quickCardTitle, { color: '#F87171' }]}>SOS Alerta</Text>
+                <Text style={styles.quickCardDesc}>Emergência</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
             </View>
-            <Text style={[styles.quickCardTitle, { color: '#F87171' }]}>SOS Alerta</Text>
-            <Text style={styles.quickCardDesc}>Emergência</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickCard} activeOpacity={0.8}>
-            <View style={[styles.quickIconBox, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
-              <Text style={{ fontSize: 20 }}>📋</Text>
+          {/* 3. Checklist */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={onNavigateToTrip}
+            activeOpacity={0.8}
+          >
+            <View style={styles.quickCardContent}>
+              <View style={[styles.quickIconBox, { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)' }]}>
+                <Ionicons name="clipboard-outline" size={18} color="#60A5FA" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.quickCardTitle}>Checklist</Text>
+                <Text style={styles.quickCardDesc}>Inspeção diária</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
             </View>
-            <Text style={styles.quickCardTitle}>Checklist</Text>
-            <Text style={styles.quickCardDesc}>Inspeção diária</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickCard} activeOpacity={0.8}>
-            <View style={[styles.quickIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-              <Text style={{ fontSize: 20 }}>📄</Text>
+          {/* 4. Histórico */}
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={onNavigateToHistory}
+            activeOpacity={0.8}
+          >
+            <View style={styles.quickCardContent}>
+              <View style={[styles.quickIconBox, { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
+                <Ionicons name="time-outline" size={18} color="#34D399" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.quickCardTitle}>Histórico</Text>
+                <Text style={styles.quickCardDesc}>Viagens e cupons</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={colors.textDim} />
             </View>
-            <Text style={styles.quickCardTitle}>Documentos</Text>
-            <Text style={styles.quickCardDesc}>CNH e CRLV</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -107,80 +311,192 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  container: {
-    padding: 20,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  greetingRow: {
+  profileHeaderTouch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primaryMuted,
+    borderWidth: 1.5,
+    borderColor: colors.primaryBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: colors.primary,
+    fontWeight: '900',
+    fontSize: 16,
+  },
+  driverInfoCol: {
+    flex: 1,
+  },
+  driverName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  driverSubtitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+    marginTop: 1,
+  },
+  headerRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  greeting: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   bioBadge: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.35)',
     paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 8,
   },
   bioBadgeText: {
     color: '#34D399',
     fontSize: 9,
     fontWeight: '800',
-    letterSpacing: 0.5,
   },
-  driverName: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.textPrimary,
-    marginTop: 2,
-  },
-  logoutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+  headerIconButton: {
+    width: 36,
+    height: 36,
     borderRadius: 12,
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    marginRight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  logoutText: {
-    color: colors.textSecondary,
+  notifBadge: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    position: 'absolute',
+    top: 6,
+    right: 6,
+  },
+  container: {
+    padding: 20,
+    gap: 16,
+    paddingBottom: 30,
+  },
+  cnhBanner: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    borderRadius: 18,
+    padding: 12,
+  },
+  cnhBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cnhIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cnhTitle: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#34D399',
+  },
+  cnhDesc: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  receiptAlert: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    borderRadius: 18,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  receiptAlertLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  receiptIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  receiptTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FBBF24',
+  },
+  receiptDesc: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  attachButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  attachButtonText: {
+    color: '#080B0C',
+    fontSize: 11,
+    fontWeight: '900',
   },
   tripCard: {
     backgroundColor: colors.surface,
     borderRadius: 24,
-    padding: 24,
+    padding: 20,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 28,
+    borderColor: colors.primaryBorder,
+    gap: 14,
+  },
+  tripHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   tripBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 107, 0, 0.12)',
+    backgroundColor: colors.primaryMuted,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
-    marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 107, 0, 0.3)',
+    borderColor: colors.primaryBorder,
   },
   badgeDot: {
     width: 6,
@@ -192,68 +508,148 @@ const styles = StyleSheet.create({
   badgeText: {
     color: colors.primary,
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
-  tripTitle: {
-    fontSize: 22,
+  gpsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  gpsDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
+    marginRight: 5,
+  },
+  gpsText: {
+    color: '#34D399',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  routeCity: {
+    fontSize: 16,
     fontWeight: '800',
     color: colors.textPrimary,
-    marginBottom: 6,
   },
-  tripSubtitle: {
-    fontSize: 13,
-    color: colors.textMuted,
-    lineHeight: 18,
-    marginBottom: 20,
+  tripTimingGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingTop: 4,
+  },
+  timingItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 10,
+    borderRadius: 14,
+  },
+  timingIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timingLabel: {
+    fontSize: 9,
+    color: colors.textDim,
+    fontWeight: '600',
+  },
+  timingValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 1,
   },
   startTripButton: {
     backgroundColor: colors.primary,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 10,
     elevation: 6,
+  },
+  startTripButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  playIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#080B0C',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   startTripButtonText: {
     color: '#080B0C',
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
   },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
-    color: colors.textDim,
-    letterSpacing: 1.5,
-    marginBottom: 12,
+    color: colors.textSecondary,
+    letterSpacing: 1,
   },
   quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   quickCard: {
-    width: '48%',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 18,
-    padding: 16,
+    padding: 14,
+  },
+  quickCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   quickIconBox: {
     width: 42,
     height: 42,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
   },
   quickCardTitle: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.textPrimary,
   },
   quickCardDesc: {
