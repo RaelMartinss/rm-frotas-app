@@ -173,7 +173,7 @@ class AppUpdateService {
         currentVersion: CURRENT_APP_VERSION,
         latestVersion: latestTag,
         downloadUrl,
-        releaseNotes: release.body || 'Melhorias de desempenho e novas funcionalidades.',
+        releaseNotes: this.formatReleaseNotes(release.body),
       };
     } catch (err) {
       console.warn('[AppUpdateService] Falha ao verificar atualizações:', err);
@@ -241,6 +241,33 @@ class AppUpdateService {
         Alert.alert('Download', 'Acesse o portal para baixar a atualização mais recente.');
       }
     }
+  }
+
+  /**
+   * Limpa o texto da nota de versão para exibição amigável ao usuário final (padrão de mercado)
+   */
+  private formatReleaseNotes(rawBody?: string): string {
+    if (!rawBody || typeof rawBody !== 'string') {
+      return '• Aprimoramentos de desempenho e novas funcionalidades\n• Correções gerais e maior estabilidade no aplicativo';
+    }
+
+    // Se o body contém URLs de changelog do GitHub (ex: **Full Changelog**: https://github.com/...)
+    // removemos as URLs cruas e mantemos apenas itens descritivos ou retornamos o resumo padrão
+    const cleanLines = rawBody
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => {
+        if (!line) return false;
+        if (line.includes('Full Changelog') || line.includes('github.com')) return false;
+        if (line.startsWith('Merge branch') || line.startsWith('Merge pull request')) return false;
+        return true;
+      });
+
+    if (cleanLines.length === 0) {
+      return '• Melhorias de desempenho e interface\n• Correções de estabilidade e navegação operacional';
+    }
+
+    return cleanLines.join('\n');
   }
 
   /**

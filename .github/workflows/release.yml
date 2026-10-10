@@ -79,9 +79,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: Release ${{ github.ref_name }}
+          name: Versão ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           files: release-assets/rm-frotas.apk
-          generate_release_notes: true
+          body: |
+            ✨ **Novidades e Aprimoramentos da Versão:**
+            • Novo layout do Perfil do Motorista e tela de Configurações da Conta
+            • Otimização visual dos cards operacionais e navegação da frota
+            • Atualizador nativo in-app com download direto em segundo plano
+            • Melhorias contínuas de estabilidade, segurança e performance
+          generate_release_notes: false
           draft: false
           prerelease: false

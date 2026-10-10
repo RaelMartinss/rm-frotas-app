@@ -277,8 +277,8 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       const res = await appUpdateService.checkForUpdates();
       if (res.hasUpdate) {
         Alert.alert(
-          `Nova Versão v${res.latestVersion} Disponível!`,
-          `Sua versão atual é v${res.currentVersion}.\n\nNotas da versão:\n${res.releaseNotes}\n\nDeseja baixar a atualização agora?`,
+          `Atualização Disponível (v${res.latestVersion})`,
+          `Uma nova versão do RM Frotas está disponível para instalação.\n\nO que há de novo:\n${res.releaseNotes}\n\nDeseja atualizar agora?`,
           [
             { text: 'Mais tarde', style: 'cancel' },
             {
@@ -1239,8 +1239,9 @@ const styles = StyleSheet.create({
     borderColor: '#222A2F',
     backgroundColor: '#11161A',
     position: 'relative',
-    minHeight: 108,
-    padding: 16,
+    minHeight: 114,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     justifyContent: 'center',
   },
   heroBackgroundImage: {
@@ -1257,16 +1258,16 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: '68%',
-    backgroundColor: 'rgba(8, 11, 12, 0.90)',
+    width: '58%',
+    backgroundColor: 'rgba(8, 11, 12, 0.82)',
   },
   heroOverlayGradientRight: {
     position: 'absolute',
     top: 0,
-    left: '60%',
+    left: '50%',
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(8, 11, 12, 0.35)',
+    backgroundColor: 'rgba(8, 11, 12, 0.18)',
   },
   heroContentRow: {
     flexDirection: 'row',
