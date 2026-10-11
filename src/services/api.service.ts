@@ -7,6 +7,7 @@ import {
   DriverFuelDTO,
   DriverHistoryItem,
   DriverFuelHistoryItem,
+  QueuedOfflineFuel,
   LocationPingDTO,
   ReportIncidentDTO,
   ReportIncidentResult,
@@ -404,9 +405,107 @@ class ApiService {
   private async queueOfflineFuel(dto: DriverFuelDTO, idempotencyKey: string): Promise<void> {
     try {
       const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
-      const queue = queueStr ? JSON.parse(queueStr) : [];
-      queue.push({ dto, idempotencyKey, timestamp: new Date().toISOString() });
+      const queue: QueuedOfflineFuel[] = queueStr ? JSON.parse(queueStr) : [];
+      queue.push({
+        id: idempotencyKey,
+        dto,
+        idempotencyKey,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        error: null,
+      });
       await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(queue));
+    } catch {}
+  }
+
+  /**
+   * Obtém a lista completa de itens de abastecimento na fila offline
+   */
+  async getOfflineFuelQueue(): Promise<QueuedOfflineFuel[]> {
+    try {
+      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+      if (!queueStr) return [];
+      const queue = JSON.parse(queueStr);
+      return Array.isArray(queue) ? queue : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Retorna a quantidade de itens na fila offline aguardando sincronização
+   */
+  async getOfflineQueueCount(): Promise<number> {
+    try {
+      const queue = await this.getOfflineFuelQueue();
+      return queue.length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Tenta reenviar manualmente um item específico da fila offline
+   */
+  async retryOfflineFuel(idempotencyKey: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+      if (!queueStr) return { success: false, message: 'Fila vazia.' };
+
+      const queue: QueuedOfflineFuel[] = JSON.parse(queueStr);
+      const itemIndex = queue.findIndex((i) => (i.idempotencyKey || i.id) === idempotencyKey);
+      if (itemIndex === -1) return { success: false, message: 'Item não encontrado na fila.' };
+
+      // Atualiza status para sincronizando
+      queue[itemIndex].status = 'SYNCING';
+      await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(queue));
+
+      const item = queue[itemIndex];
+      const res = await this.authenticatedFetch('/driver-portal/fuel-record', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': item.idempotencyKey },
+        body: JSON.stringify(item.dto),
+      });
+
+      if (res.ok) {
+        // Removido com sucesso
+        const remaining = queue.filter((i) => (i.idempotencyKey || i.id) !== idempotencyKey);
+        await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(remaining));
+        return { success: true };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        queue[itemIndex].status = 'DEAD';
+        queue[itemIndex].error = err.message || 'Falha na validação do servidor.';
+        await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(queue));
+        return { success: false, message: queue[itemIndex].error || undefined };
+      }
+    } catch (err: any) {
+      try {
+        const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+        if (queueStr) {
+          const queue: QueuedOfflineFuel[] = JSON.parse(queueStr);
+          const idx = queue.findIndex((i) => (i.idempotencyKey || i.id) === idempotencyKey);
+          if (idx !== -1) {
+            queue[idx].status = 'DEAD';
+            queue[idx].error = err?.message || 'Sem conexão de internet.';
+            await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(queue));
+          }
+        }
+      } catch {}
+      return { success: false, message: err?.message || 'Sem conexão com o servidor.' };
+    }
+  }
+
+  /**
+   * Descarta e remove definitivamente um item com falha da fila offline
+   */
+  async discardOfflineFuel(idempotencyKey: string): Promise<void> {
+    try {
+      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+      if (!queueStr) return;
+      const queue: QueuedOfflineFuel[] = JSON.parse(queueStr);
+      const remaining = queue.filter((i) => (i.idempotencyKey || i.id) !== idempotencyKey);
+      await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(remaining));
     } catch {}
   }
 
@@ -415,15 +514,12 @@ class ApiService {
    */
   async syncOfflineQueue(): Promise<{ synced: number; failed: number }> {
     try {
-      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
-      if (!queueStr) return { synced: 0, failed: 0 };
-
-      const queue: Array<{ dto: DriverFuelDTO; idempotencyKey: string }> = JSON.parse(queueStr);
+      const queue = await this.getOfflineFuelQueue();
       if (queue.length === 0) return { synced: 0, failed: 0 };
 
       let synced = 0;
       let failed = 0;
-      const remaining: typeof queue = [];
+      const remaining: QueuedOfflineFuel[] = [];
 
       for (const item of queue) {
         try {
@@ -436,6 +532,9 @@ class ApiService {
           if (res.ok) {
             synced++;
           } else {
+            const err = await res.json().catch(() => ({}));
+            item.status = 'DEAD';
+            item.error = err.message || 'Falha ao sincronizar registro.';
             remaining.push(item);
             failed++;
           }
@@ -449,20 +548,6 @@ class ApiService {
       return { synced, failed };
     } catch {
       return { synced: 0, failed: 0 };
-    }
-  }
-
-  /**
-   * Retorna a quantidade de itens na fila offline aguardando sincronização
-   */
-  async getOfflineQueueCount(): Promise<number> {
-    try {
-      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
-      if (!queueStr) return 0;
-      const queue = JSON.parse(queueStr);
-      return Array.isArray(queue) ? queue.length : 0;
-    } catch {
-      return 0;
     }
   }
 

@@ -86,6 +86,15 @@ export interface DriverHistoryItem {
   createdAt: string;
 }
 
+export interface QueuedOfflineFuel {
+  id?: string;
+  idempotencyKey: string;
+  dto: DriverFuelDTO;
+  timestamp: string;
+  status?: 'PENDING' | 'SYNCING' | 'DEAD';
+  error?: string | null;
+}
+
 export interface DriverFuelHistoryItem {
   id: string;
   vehicleId: string;
@@ -103,6 +112,9 @@ export interface DriverFuelHistoryItem {
   fueledAt: string;
   isPendingReceipt: boolean;
   isOfflineQueueItem?: boolean;
+  offlineStatus?: 'PENDING' | 'SYNCING' | 'DEAD';
+  offlineActionId?: string;
+  offlineError?: string | null;
 }
 
 export interface LocationPingDTO {
