@@ -1,6 +1,6 @@
 {
   "name": "rm-frotas-app",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -13,6 +13,7 @@
     "expo-local-authentication": "~57.0.3",
     "expo-location": "~57.0.20",
     "expo-secure-store": "~57.0.4",
+    "expo-splash-screen": "^57.0.9",
     "expo-status-bar": "~57.0.1",
     "expo-task-manager": "~57.0.21",
     "lucide-react-native": "^1.54.0",
