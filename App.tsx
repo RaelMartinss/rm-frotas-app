@@ -12,6 +12,7 @@ import { SOSScreen } from './src/screens/SOSScreen';
 import { ChecklistScreen } from './src/screens/ChecklistScreen';
 import { RouteScreen } from './src/screens/RouteScreen';
 import { api } from './src/services/api.service';
+import { deviceService } from './src/services/device.service';
 import { colors } from './src/theme/colors';
 import { User } from './src/types/auth';
 
@@ -35,6 +36,8 @@ export default function App() {
           api.getCurrentTrip().then((s) => {
             if (s?.trip) setActiveTrip(s.trip);
           }).catch(() => {});
+          // Sincroniza versão e dados do dispositivo com o servidor
+          deviceService.syncDeviceTelemetry().catch(() => {});
         }
       } catch {
       } finally {
@@ -69,7 +72,12 @@ export default function App() {
   if (!currentUser) {
     return (
       <SafeAreaProvider>
-        <LoginScreen onLoginSuccess={setCurrentUser} />
+        <LoginScreen
+          onLoginSuccess={(user) => {
+            setCurrentUser(user);
+            deviceService.syncDeviceTelemetry(true).catch(() => {});
+          }}
+        />
       </SafeAreaProvider>
     );
   }

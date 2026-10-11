@@ -743,6 +743,33 @@ class ApiService {
 
     return result;
   }
+
+  /**
+   * Sincroniza telemetria de versão e aparelho com o servidor (com throttle)
+   */
+  async syncDevice(params: {
+    deviceId: string;
+    buildNumber: number;
+    appVersion: string;
+    platform: 'ANDROID' | 'IOS' | 'WEB';
+    deviceModel?: string;
+    osVersion?: string;
+  }): Promise<{ success: boolean; throttled?: boolean; message?: string }> {
+    try {
+      const res = await this.authenticatedFetch('/driver-portal/device/sync', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      });
+
+      if (!res.ok) {
+        return { success: false };
+      }
+
+      return res.json();
+    } catch {
+      return { success: false };
+    }
+  }
 }
 
 export const api = new ApiService();
