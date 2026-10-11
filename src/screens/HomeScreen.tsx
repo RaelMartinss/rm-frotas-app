@@ -12,6 +12,7 @@ import {
   Image,
   Modal,
   Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -63,6 +64,8 @@ export function HomeScreen({
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [docsModalOpen, setDocsModalOpen] = useState(false);
+  const [completeModalOpen, setCompleteModalOpen] = useState(false);
+  const [finalKm, setFinalKm] = useState('');
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [driverPhoto, setDriverPhoto] = useState<string | null>(user.photoUrl || null);
   const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
@@ -213,33 +216,44 @@ export function HomeScreen({
 
   const handleTripAction = () => {
     if (isTripInProgress) {
-      Alert.alert(
-        'Concluir Viagem',
-        `Deseja finalizar a viagem para ${activeTrip?.destinationCity || 'Curitiba'}? O veículo será liberado para a frota.`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Sim, Concluir',
-            onPress: async () => {
-              if (!activeTrip?.id) return;
-              setCompleting(true);
-              try {
-                await locationService.stopTracking();
-                await api.completeTrip(activeTrip.id);
-                Alert.alert('Viagem Concluída', 'O veículo foi liberado com sucesso!');
-                if (onTripCompleted) onTripCompleted();
-                loadData(true);
-              } catch (err: any) {
-                Alert.alert('Erro', err.message || 'Não foi possível concluir a viagem.');
-              } finally {
-                setCompleting(false);
-              }
-            },
-          },
-        ]
-      );
+      const currentKmVal = activeTrip?.vehicle?.currentKm;
+      setFinalKm(currentKmVal != null ? String(currentKmVal) : '');
+      setCompleteModalOpen(true);
     } else {
       onNavigateToTrip();
+    }
+  };
+
+  const handleConfirmCompleteTrip = async () => {
+    if (!activeTrip?.id) return;
+
+    const parsedKm = parseInt(finalKm.replace(/\D/g, ''), 10);
+    if (isNaN(parsedKm) || parsedKm <= 0) {
+      Alert.alert('Odômetro Obrigatório', 'Informe a quilometragem final no odômetro do veículo para concluir.');
+      return;
+    }
+
+    const initialKm = activeTrip?.vehicle?.currentKm;
+    if (initialKm != null && parsedKm < initialKm) {
+      Alert.alert(
+        'Odômetro Menor que o Inicial',
+        `A quilometragem final (${parsedKm.toLocaleString('pt-BR')} km) não pode ser menor que o odômetro anterior do veículo (${Number(initialKm).toLocaleString('pt-BR')} km).`
+      );
+      return;
+    }
+
+    setCompleting(true);
+    try {
+      await locationService.stopTracking().catch(() => {});
+      const res = await api.completeTrip(activeTrip.id, parsedKm);
+      setCompleteModalOpen(false);
+      Alert.alert('Viagem Concluída', res.message || 'O veículo foi liberado com sucesso!');
+      if (onTripCompleted) onTripCompleted();
+      loadData(true);
+    } catch (err: any) {
+      Alert.alert('Erro ao Finalizar', err.message || 'Não foi possível concluir a viagem.');
+    } finally {
+      setCompleting(false);
     }
   };
 
@@ -835,6 +849,141 @@ export function HomeScreen({
             >
               <Text style={styles.docsModalCloseFullText}>Fechar Documentação</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: FINALIZAR VIAGEM (KM FINAL) */}
+      <Modal
+        visible={completeModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCompleteModalOpen(false)}
+      >
+        <View style={styles.completeModalBackdrop}>
+          <View style={styles.completeModalCard}>
+            {/* Cabeçalho */}
+            <View style={styles.completeModalHeader}>
+              <View style={styles.completeModalHeaderLeft}>
+                <View style={styles.completeIconBadge}>
+                  <Ionicons name="checkmark-done" size={20} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={styles.completeModalTitle}>Finalizar Viagem</Text>
+                  <Text style={styles.completeModalSubtitle}>Liberação do veículo e odômetro</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setCompleteModalOpen(false)}
+                style={styles.completeModalCloseBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Resumo da Rota & Veículo */}
+            <View style={styles.completeRouteCard}>
+              <View style={styles.completeRouteRow}>
+                <Ionicons name="location-sharp" size={14} color={colors.primary} />
+                <Text style={styles.completeRouteText}>
+                  {activeTrip?.originCity
+                    ? `${activeTrip.originCity} (${activeTrip.originState || 'SP'})`
+                    : activeTrip?.origin || 'Paragominas (PA)'}
+                  {' → '}
+                  {activeTrip?.destinationCity
+                    ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
+                    : activeTrip?.destination || 'São Luís (MA)'}
+                </Text>
+              </View>
+              <View style={styles.completeVehicleRow}>
+                <View style={styles.completePlateBadge}>
+                  <Text style={styles.completePlateText}>
+                    {activeTrip?.vehicle?.plate || 'BRA2E19'}
+                  </Text>
+                </View>
+                <Text style={styles.completeVehicleModel}>
+                  {activeTrip?.vehicle
+                    ? `${activeTrip.vehicle.brand || ''} ${activeTrip.vehicle.model || ''}`.trim()
+                    : 'Volvo FH 540'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Odômetro Anterior */}
+            <View style={styles.previousKmCard}>
+              <View style={styles.previousKmLeft}>
+                <Ionicons name="speedometer-outline" size={16} color={colors.textMuted} />
+                <Text style={styles.previousKmLabel}>Odômetro anterior:</Text>
+              </View>
+              <Text style={styles.previousKmValue}>
+                {activeTrip?.vehicle?.currentKm != null
+                  ? `${Number(activeTrip.vehicle.currentKm).toLocaleString('pt-BR')} km`
+                  : '148.320 km'}
+              </Text>
+            </View>
+
+            {/* Input KM Final */}
+            <View style={styles.completeKmSection}>
+              <Text style={styles.completeKmLabel}>KM FINAL DO ODÔMETRO</Text>
+              <View style={styles.completeKmInputContainer}>
+                <TextInput
+                  style={styles.completeKmInput}
+                  value={finalKm}
+                  onChangeText={setFinalKm}
+                  keyboardType="numeric"
+                  placeholder="ex: 148580"
+                  placeholderTextColor={colors.textDim}
+                />
+                <Text style={styles.completeKmSuffix}>KM</Text>
+              </View>
+              {(() => {
+                const parsed = parseInt(finalKm.replace(/\D/g, ''), 10);
+                const prev = activeTrip?.vehicle?.currentKm ?? 148320;
+                if (!isNaN(parsed) && parsed < prev) {
+                  return (
+                    <Text style={styles.completeKmWarning}>
+                      ⚠️ Odômetro informado é menor que o anterior ({Number(prev).toLocaleString('pt-BR')} km).
+                    </Text>
+                  );
+                }
+                if (!isNaN(parsed) && parsed > prev) {
+                  const diff = parsed - prev;
+                  return (
+                    <Text style={styles.completeKmSuccess}>
+                      ✓ Distância calculada nesta viagem: +{diff.toLocaleString('pt-BR')} km
+                    </Text>
+                  );
+                }
+                return null;
+              })()}
+            </View>
+
+            {/* Botões de Ação */}
+            <View style={styles.completeActionRow}>
+              <TouchableOpacity
+                style={styles.completeCancelBtn}
+                onPress={() => setCompleteModalOpen(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.completeCancelText}>Voltar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.completeConfirmBtn, completing && { opacity: 0.6 }]}
+                onPress={handleConfirmCompleteTrip}
+                disabled={completing}
+                activeOpacity={0.85}
+              >
+                {completing ? (
+                  <ActivityIndicator size="small" color="#080B0C" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={17} color="#080B0C" style={{ marginRight: 6 }} />
+                    <Text style={styles.completeConfirmText}>Concluir Chegada</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1710,6 +1859,211 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#CAD2D9',
+  },
+  /* MODAL FINALIZAR VIAGEM */
+  completeModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(8, 11, 12, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  completeModalCard: {
+    backgroundColor: '#0F1215',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 400,
+    padding: 20,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  completeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  completeModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  completeIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 107, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completeModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#E7EBEE',
+  },
+  completeModalSubtitle: {
+    fontSize: 11,
+    color: '#8E9DA8',
+    marginTop: 2,
+  },
+  completeModalCloseBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: '#161B1E',
+  },
+  completeRouteCard: {
+    backgroundColor: '#161B1E',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
+  },
+  completeRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  completeRouteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E7EBEE',
+  },
+  completeVehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  completePlateBadge: {
+    backgroundColor: 'rgba(255, 107, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  completePlateText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  completeVehicleModel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8E9DA8',
+  },
+  previousKmCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#11161A',
+    borderWidth: 1,
+    borderColor: '#1D2429',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  previousKmLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  previousKmLabel: {
+    fontSize: 11,
+    color: '#8E9DA8',
+    fontWeight: '600',
+  },
+  previousKmValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#E7EBEE',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  completeKmSection: {
+    gap: 6,
+  },
+  completeKmLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#8E9DA8',
+    letterSpacing: 0.8,
+  },
+  completeKmInputContainer: {
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  completeKmInput: {
+    backgroundColor: '#080B0C',
+    borderWidth: 1,
+    borderColor: '#222A2F',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontWeight: '800',
+    color: '#E7EBEE',
+  },
+  completeKmSuffix: {
+    position: 'absolute',
+    right: 14,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#8E9DA8',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  completeKmWarning: {
+    fontSize: 11,
+    color: '#F59E0B',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  completeKmSuccess: {
+    fontSize: 11,
+    color: '#34D399',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  completeActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  completeCancelBtn: {
+    flex: 1,
+    backgroundColor: '#1E262B',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completeCancelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#CAD2D9',
+  },
+  completeConfirmBtn: {
+    flex: 1.5,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completeConfirmText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#080B0C',
+    letterSpacing: 0.3,
   },
 });
 
