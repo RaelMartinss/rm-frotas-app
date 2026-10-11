@@ -297,30 +297,55 @@ class ApiService {
   async registerFuel(
     dto: DriverFuelDTO,
     idempotencyKey?: string
-  ): Promise<{ message: string; id: string; totalCost: number }> {
+  ): Promise<{ message: string; id: string; totalCost: number; isOffline?: boolean }> {
     const key = idempotencyKey || `fuel_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
+    // Se estiver sem conexão confirmada, enfileira diretamente sem esperar timeout
+    if (!networkService.isOnline) {
+      await this.queueOfflineFuel(dto, key);
+      return {
+        message: 'Abastecimento gravado localmente (Modo Offline). Será sincronizado automaticamente assim que houver conexão.',
+        id: `offline_${Date.now()}`,
+        totalCost: Number((dto.liters * dto.pricePerLiter).toFixed(2)),
+        isOffline: true,
+      };
+    }
+
     try {
+      const { vehiclePlate, vehicleModel, ...payloadForApi } = dto;
       const res = await this.authenticatedFetch('/driver-portal/fuel-record', {
         method: 'POST',
         headers: { 'Idempotency-Key': key },
-        body: JSON.stringify(dto),
+        body: JSON.stringify(payloadForApi),
       });
 
       if (res.ok) {
-        return res.json();
+        const data = await res.json();
+        return {
+          ...data,
+          isOffline: false,
+        };
       }
 
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || 'Erro ao registrar abastecimento.');
     } catch (error: any) {
-      // Se for erro de rede/offline, enfileira para sincronização posterior
-      if (error?.message?.includes('Network') || error?.message?.includes('Failed to fetch') || !error?.message) {
+      // Se for erro de rede/offline ou timeout, enfileira para sincronização posterior
+      const isNetworkErr =
+        !networkService.isOnline ||
+        error?.message?.includes('Network') ||
+        error?.message?.includes('Failed to fetch') ||
+        error?.message?.includes('Abort') ||
+        error?.message?.includes('timeout') ||
+        !error?.message;
+
+      if (isNetworkErr) {
         await this.queueOfflineFuel(dto, key);
         return {
-          message: 'Abastecimento gravado localmente (Offline). Será sincronizado ao reconectar.',
+          message: 'Sem sinal de internet no momento. Abastecimento gravado na fila offline e será sincronizado ao reconectar.',
           id: `offline_${Date.now()}`,
           totalCost: Number((dto.liters * dto.pricePerLiter).toFixed(2)),
+          isOffline: true,
         };
       }
       throw error;
@@ -461,10 +486,11 @@ class ApiService {
       await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(queue));
 
       const item = queue[itemIndex];
+      const { vehiclePlate, vehicleModel, ...payloadForApi } = item.dto;
       const res = await this.authenticatedFetch('/driver-portal/fuel-record', {
         method: 'POST',
         headers: { 'Idempotency-Key': item.idempotencyKey },
-        body: JSON.stringify(item.dto),
+        body: JSON.stringify(payloadForApi),
       });
 
       if (res.ok) {
@@ -523,10 +549,11 @@ class ApiService {
 
       for (const item of queue) {
         try {
+          const { vehiclePlate, vehicleModel, ...payloadForApi } = item.dto;
           const res = await this.authenticatedFetch('/driver-portal/fuel-record', {
             method: 'POST',
             headers: { 'Idempotency-Key': item.idempotencyKey },
-            body: JSON.stringify(item.dto),
+            body: JSON.stringify(payloadForApi),
           });
 
           if (res.ok) {

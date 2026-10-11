@@ -11,12 +11,14 @@ import {
   Alert,
   Image,
   Switch,
+  Vibration,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
+import { networkService } from '../services/network.service';
 import { DriverFuelDTO } from '../types/driver';
 
 interface FuelScreenProps {
@@ -39,6 +41,15 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
   const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [isOnline, setIsOnline] = useState(networkService.isOnline);
+
+  // Monitora alterações na conectividade da rede em tempo real
+  useEffect(() => {
+    const unsub = networkService.subscribe((online: boolean) => {
+      setIsOnline(online);
+    });
+    return unsub;
+  }, []);
 
   // Busca dados dinâmicos do veículo da viagem ativa caso não tenham sido passados
   useEffect(() => {
@@ -143,13 +154,17 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
     setReceiptBase64(null);
   };
 
+  // Validação e cálculo em tempo real do odômetro
+  const parsedKm = parseInt(km.replace(/\D/g, ''), 10);
+  const isKmLowerThanVehicle =
+    vehicle?.currentKm != null && !isNaN(parsedKm) && parsedKm > 0 && parsedKm < vehicle.currentKm;
+
   const handleSave = async () => {
     if (!km || !liters || !pricePerLiter) {
       Alert.alert('Atenção', 'Preencha o odômetro, a quantidade de litros e o valor por litro.');
       return;
     }
 
-    const parsedKm = parseInt(km.replace(/\D/g, ''), 10);
     if (isNaN(parsedKm) || parsedKm <= 0) {
       Alert.alert('Atenção', 'Informe um valor válido para o odômetro.');
       return;
@@ -185,19 +200,41 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
         notes: notes.trim() || undefined,
         receiptUrl: receiptBase64 || receiptPhotoUri || undefined,
         occurredAt: new Date().toISOString(),
+        vehiclePlate: vehicle?.plate || vehicle?.licensePlate || defaultVehicle?.plate || 'BRA2E19',
+        vehicleModel: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}`.trim() : 'Volvo FH 540',
       };
 
       const res = await api.registerFuel(fuelDto);
 
-      Alert.alert('Sucesso', res.message || 'Abastecimento registrado com sucesso!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (onSuccess) onSuccess();
-            else onBack();
+      try {
+        Vibration.vibrate(50);
+      } catch {}
+
+      if (res.isOffline) {
+        Alert.alert(
+          '💾 Salvo no Modo Offline',
+          'O abastecimento foi gravado com segurança na fila offline do dispositivo.\n\nSerá sincronizado automaticamente com a central assim que você tiver conexão de internet.',
+          [
+            {
+              text: 'Entendido',
+              onPress: () => {
+                if (onSuccess) onSuccess();
+                else onBack();
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('✅ Sucesso', res.message || 'Abastecimento registrado com sucesso no sistema!', [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (onSuccess) onSuccess();
+              else onBack();
+            },
           },
-        },
-      ]);
+        ]);
+      }
     } catch (err: any) {
       Alert.alert('Aviso de Lançamento', err.message || 'Abastecimento registrado em cache.');
       if (onSuccess) onSuccess();
@@ -229,6 +266,22 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* BANNER MODO OFFLINE */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <View style={styles.offlineBannerHeader}>
+              <View style={styles.offlineBadge}>
+                <Ionicons name="cloud-offline-outline" size={14} color="#F59E0B" />
+                <Text style={styles.offlineBadgeText}>MODO OFFLINE ATIVADO</Text>
+              </View>
+              <Text style={styles.offlineTimeText}>Sem conexão</Text>
+            </View>
+            <Text style={styles.offlineBannerDesc}>
+              Os dados e comprovante serão gravados com segurança no aparelho e transmitidos automaticamente para a central assim que a conexão for restabelecida.
+            </Text>
+          </View>
+        )}
+
         {/* CARD DO VEÍCULO ATIVO */}
         <View style={styles.vehicleCard}>
           <View style={styles.vehicleIconBadge}>
@@ -276,6 +329,15 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
             />
             <Text style={styles.inputSuffix}>KM</Text>
           </View>
+
+          {isKmLowerThanVehicle && (
+            <View style={styles.kmWarningBox}>
+              <Ionicons name="alert-circle" size={14} color="#F59E0B" />
+              <Text style={styles.kmWarningText}>
+                KM informado é menor que o odômetro anterior ({Number(vehicle.currentKm).toLocaleString('pt-BR')} km).
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* SEÇÃO 2: TIPO DE COMBUSTÍVEL */}
@@ -462,16 +524,35 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
 
         {/* BOTÃO SALVAR */}
         <TouchableOpacity
-          style={[styles.saveButton, submitting && { opacity: 0.7 }]}
+          style={[
+            styles.saveButton,
+            !isOnline && styles.saveButtonOffline,
+            submitting && { opacity: 0.7 },
+          ]}
           onPress={handleSave}
           disabled={submitting}
           activeOpacity={0.85}
         >
-          <MaterialCommunityIcons name="check" size={20} color="#080B0C" style={{ marginRight: 6 }} />
+          <MaterialCommunityIcons
+            name={!isOnline ? 'cloud-upload-outline' : 'check'}
+            size={20}
+            color="#080B0C"
+            style={{ marginRight: 6 }}
+          />
           <Text style={styles.saveButtonText}>
-            {submitting ? 'Salvando...' : 'Salvar Abastecimento'}
+            {submitting
+              ? 'Salvando...'
+              : !isOnline
+              ? 'Salvar Offline (Sincronizar Depois)'
+              : 'Salvar Abastecimento'}
           </Text>
         </TouchableOpacity>
+
+        {!isOnline && (
+          <Text style={styles.saveButtonOfflineNote}>
+            🔒 Registro protegido e enfileirado para envio automático
+          </Text>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -838,5 +919,73 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  saveButtonOffline: {
+    backgroundColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+  },
+  saveButtonOfflineNote: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: '#8E9DA8',
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  offlineBanner: {
+    backgroundColor: '#16130E',
+    borderWidth: 1,
+    borderColor: '#784E10',
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
+  },
+  offlineBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  offlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  offlineBadgeText: {
+    color: '#F59E0B',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  offlineTimeText: {
+    color: '#8E9DA8',
+    fontSize: 11,
+  },
+  offlineBannerDesc: {
+    color: '#CAD2D9',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  kmWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  kmWarningText: {
+    color: '#F59E0B',
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
   },
 });
