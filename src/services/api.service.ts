@@ -361,17 +361,64 @@ class ApiService {
     notes?: string,
     gasStation?: string
   ): Promise<{ message: string; id: string; receiptUrl: string }> {
-    const res = await this.authenticatedFetch(`/driver-portal/fuel-records/${id}/receipt`, {
-      method: 'PATCH',
-      body: JSON.stringify({ receiptUrl, notes, gasStation }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || 'Falha ao anexar comprovante.');
+    // Se for um item da fila offline ou se estiver sem rede
+    if (id.startsWith('offline_') || id.startsWith('fuel_')) {
+      await this.updateOfflineReceiptInQueue(id, receiptUrl, notes, gasStation);
+      return {
+        message: 'Comprovante salvo na fila offline!',
+        id,
+        receiptUrl,
+      };
     }
 
-    return res.json();
+    try {
+      const res = await this.authenticatedFetch(`/driver-portal/fuel-records/${id}/receipt`, {
+        method: 'PATCH',
+        body: JSON.stringify({ receiptUrl, notes, gasStation }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Falha ao anexar comprovante.');
+      }
+
+      return res.json();
+    } catch (err: any) {
+      if (!networkService.isOnline) {
+        await this.updateOfflineReceiptInQueue(id, receiptUrl, notes, gasStation);
+        return {
+          message: 'Sem sinal. Comprovante salvo localmente e será enviado quando houver rede.',
+          id,
+          receiptUrl,
+        };
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Atualiza recibo diretamente na fila de abastecimento offline
+   */
+  async updateOfflineReceiptInQueue(
+    idOrKey: string,
+    receiptUrl: string,
+    notes?: string,
+    gasStation?: string
+  ): Promise<void> {
+    try {
+      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+      if (!queueStr) return;
+      const queue: QueuedOfflineFuel[] = JSON.parse(queueStr);
+      const idx = queue.findIndex(
+        (i) => (i.idempotencyKey || i.id) === idOrKey || i.id === idOrKey
+      );
+      if (idx !== -1) {
+        queue[idx].dto.receiptUrl = receiptUrl;
+        if (notes !== undefined) queue[idx].dto.notes = notes;
+        if (gasStation !== undefined) queue[idx].dto.gasStation = gasStation;
+        await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(queue));
+      }
+    } catch {}
   }
 
   /**

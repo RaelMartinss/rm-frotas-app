@@ -38,6 +38,7 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
   // Modais de comprovante
   const [selectedFuel, setSelectedFuel] = useState<any>(null);
   const [viewReceiptModalOpen, setViewReceiptModalOpen] = useState(false);
+  const [fullImageModalOpen, setFullImageModalOpen] = useState(false);
   const [attachModalOpen, setAttachModalOpen] = useState(false);
   const [attachPhotoUri, setAttachPhotoUri] = useState<string | null>(null);
   const [attachBase64, setAttachBase64] = useState<string | null>(null);
@@ -74,7 +75,7 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
           odometerAtFueling: p?.currentKm || 0,
           gasStation: p?.gasStation || null,
           fullTank: !!p?.fullTank,
-          receiptUrl: null,
+          receiptUrl: p?.receiptUrl || null,
           notes: p?.notes || null,
           fueledAt: item.timestamp || new Date().toISOString(),
           isPendingReceipt: false,
@@ -656,9 +657,10 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
         <View style={styles.receiptModalBackdrop}>
           <View style={styles.receiptModalCard}>
             <View style={styles.receiptModalHeader}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.receiptModalTitle}>Comprovante Fiscal</Text>
-                <Text style={styles.receiptModalSubtitle}>
+                <Text style={styles.receiptModalSubtitle} numberOfLines={1}>
+                  {selectedFuel?.vehiclePlate ? `${selectedFuel.vehiclePlate} • ` : ''}
                   {selectedFuel?.station || selectedFuel?.gasStation || 'Posto de Abastecimento'}
                 </Text>
               </View>
@@ -672,40 +674,85 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={styles.receiptModalScroll}>
-              <View style={styles.receiptImageBox}>
+              <TouchableOpacity
+                style={styles.receiptImageBox}
+                activeOpacity={selectedFuel?.receiptUrl ? 0.9 : 1}
+                onPress={() => {
+                  if (selectedFuel?.receiptUrl) {
+                    setFullImageModalOpen(true);
+                  }
+                }}
+              >
                 {selectedFuel?.receiptUrl ? (
-                  <Image
-                    source={{ uri: selectedFuel.receiptUrl }}
-                    style={styles.receiptFullImage}
-                    resizeMode="contain"
-                  />
+                  <>
+                    <Image
+                      source={{ uri: selectedFuel.receiptUrl }}
+                      style={styles.receiptFullImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.tapToZoomBadge}>
+                      <Ionicons name="scan-outline" size={13} color="#FFFFFF" />
+                      <Text style={styles.tapToZoomText}>Toque para tela cheia</Text>
+                    </View>
+                  </>
                 ) : (
                   <View style={styles.receiptPlaceholderBox}>
                     <Ionicons name="document-text-outline" size={48} color="#8E9DA8" />
                     <Text style={styles.receiptPlaceholderText}>Comprovante digital anexado</Text>
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
 
               <View style={styles.receiptInfoGrid}>
                 <View style={styles.receiptInfoRow}>
                   <Text style={styles.receiptInfoLabel}>Total Pago:</Text>
                   <Text style={styles.receiptInfoValueHighlight}>
-                    {selectedFuel?.total || `R$ ${selectedFuel?.totalCost?.toFixed(2).replace('.', ',') || '0,00'}`}
+                    {selectedFuel?.total ||
+                      `R$ ${(Number(selectedFuel?.totalCost || 0)).toFixed(2).replace('.', ',')}`}
                   </Text>
                 </View>
 
                 <View style={styles.receiptInfoRow}>
                   <Text style={styles.receiptInfoLabel}>Volume / Combustível:</Text>
                   <Text style={styles.receiptInfoValue}>
-                    {selectedFuel?.liters || `${selectedFuel?.liters} L • ${selectedFuel?.fuelType}`}
+                    {`${Number(selectedFuel?.liters || 0).toFixed(1)} L • ${selectedFuel?.fuelType || 'DIESEL'}`}
+                  </Text>
+                </View>
+
+                {selectedFuel?.pricePerUnit || selectedFuel?.pricePerLiter ? (
+                  <View style={styles.receiptInfoRow}>
+                    <Text style={styles.receiptInfoLabel}>Preço por Litro:</Text>
+                    <Text style={styles.receiptInfoValue}>
+                      R$ {Number(selectedFuel.pricePerUnit || selectedFuel.pricePerLiter || 0).toFixed(3).replace('.', ',')}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {selectedFuel?.vehiclePlate || selectedFuel?.vehicleModel ? (
+                  <View style={styles.receiptInfoRow}>
+                    <Text style={styles.receiptInfoLabel}>Veículo:</Text>
+                    <Text style={styles.receiptInfoValue}>
+                      {selectedFuel.vehiclePlate || ''} {selectedFuel.vehicleModel ? `(${selectedFuel.vehicleModel})` : ''}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.receiptInfoRow}>
+                  <Text style={styles.receiptInfoLabel}>Odômetro:</Text>
+                  <Text style={styles.receiptInfoValue}>
+                    {selectedFuel?.odometerAtFueling
+                      ? `${selectedFuel.odometerAtFueling.toLocaleString('pt-BR')} km`
+                      : 'Não informado'}
                   </Text>
                 </View>
 
                 <View style={styles.receiptInfoRow}>
                   <Text style={styles.receiptInfoLabel}>Data do Registro:</Text>
                   <Text style={styles.receiptInfoValue}>
-                    {selectedFuel?.date || (selectedFuel?.fueledAt ? new Date(selectedFuel.fueledAt).toLocaleString('pt-BR') : 'Recentemente')}
+                    {selectedFuel?.date ||
+                      (selectedFuel?.fueledAt
+                        ? new Date(selectedFuel.fueledAt).toLocaleString('pt-BR')
+                        : 'Recentemente')}
                   </Text>
                 </View>
 
@@ -718,15 +765,73 @@ export function HistoryScreen({ onBack }: HistoryScreenProps) {
               </View>
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.receiptModalCloseFullBtn}
-              onPress={() => setViewReceiptModalOpen(false)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.receiptModalCloseFullText}>Fechar Visualização</Text>
-            </TouchableOpacity>
+            <View style={styles.receiptModalActionsRow}>
+              {selectedFuel?.receiptUrl && (
+                <TouchableOpacity
+                  style={styles.receiptModalExpandBtn}
+                  onPress={() => setFullImageModalOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="expand-outline" size={16} color="#FF7A00" />
+                  <Text style={styles.receiptModalExpandText}>Tela Cheia</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.receiptModalCloseFullBtn,
+                  selectedFuel?.receiptUrl ? { flex: 1 } : { width: '100%' },
+                ]}
+                onPress={() => setViewReceiptModalOpen(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.receiptModalCloseFullText}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+      </Modal>
+
+      {/* MODAL: COMPROVANTE EM TELA CHEIA */}
+      <Modal
+        visible={fullImageModalOpen && !!selectedFuel?.receiptUrl}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={() => setFullImageModalOpen(false)}
+      >
+        <SafeAreaView style={styles.fullscreenSafeContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#080B0C" />
+          <View style={styles.fullscreenHeader}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.fullscreenTitle}>Comprovante Fiscal</Text>
+              <Text style={styles.fullscreenSubtitle} numberOfLines={1}>
+                {selectedFuel?.station || selectedFuel?.gasStation || 'Posto de Abastecimento'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.fullscreenCloseBtn}
+              onPress={() => setFullImageModalOpen(false)}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.fullscreenImageContainer}
+            activeOpacity={1}
+            onPress={() => setFullImageModalOpen(false)}
+          >
+            {selectedFuel?.receiptUrl && (
+              <Image
+                source={{ uri: selectedFuel.receiptUrl }}
+                style={styles.fullscreenImage}
+                resizeMode="contain"
+              />
+            )}
+          </TouchableOpacity>
+        </SafeAreaView>
       </Modal>
 
       {/* MODAL: ANEXAR FOTO DO COMPROVANTE */}
@@ -1414,6 +1519,25 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  tapToZoomBadge: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  tapToZoomText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   receiptPlaceholderBox: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1467,6 +1591,28 @@ const styles = StyleSheet.create({
     color: '#CAD2D9',
     lineHeight: 16,
   },
+  receiptModalActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  receiptModalExpandBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 122, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 122, 0, 0.3)',
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+  },
+  receiptModalExpandText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FF7A00',
+  },
   receiptModalCloseFullBtn: {
     backgroundColor: '#1E262B',
     borderRadius: 14,
@@ -1478,6 +1624,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#CAD2D9',
+  },
+  /* FULLSCREEN RECEIPT MODAL */
+  fullscreenSafeContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  fullscreenHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    backgroundColor: '#080B0C',
+    borderBottomWidth: 1,
+    borderBottomColor: '#161B1E',
+  },
+  fullscreenTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  fullscreenSubtitle: {
+    fontSize: 12,
+    color: '#8E9DA8',
+    marginTop: 2,
+  },
+  fullscreenCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1E262B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenImageContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
   },
   /* ATTACH MODAL */
   attachModalHeaderLeft: {
