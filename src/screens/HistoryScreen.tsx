@@ -23,17 +23,23 @@ import { DriverHistoryItem, DriverFuelHistoryItem } from '../types/driver';
 
 interface HistoryScreenProps {
   onBack?: () => void;
+  initialTab?: 'trips' | 'fuel';
+  initialFilterPendingOnly?: boolean;
 }
 
-export function HistoryScreen({ onBack }: HistoryScreenProps) {
-  const [activeTab, setActiveTab] = useState<'trips' | 'fuel'>('trips');
+export function HistoryScreen({
+  onBack,
+  initialTab = 'trips',
+  initialFilterPendingOnly = false,
+}: HistoryScreenProps) {
+  const [activeTab, setActiveTab] = useState<'trips' | 'fuel'>(initialTab);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [trips, setTrips] = useState<DriverHistoryItem[]>([]);
   const [fuelRecords, setFuelRecords] = useState<DriverFuelHistoryItem[]>([]);
   const [offlineFuelRecords, setOfflineFuelRecords] = useState<DriverFuelHistoryItem[]>([]);
   const [retryingId, setRetryingId] = useState<string | null>(null);
-  const [filterPendingOnly, setFilterPendingOnly] = useState(false);
+  const [filterPendingOnly, setFilterPendingOnly] = useState(initialFilterPendingOnly);
 
   // Modais de comprovante
   const [selectedFuel, setSelectedFuel] = useState<any>(null);

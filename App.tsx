@@ -25,6 +25,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [activeTrip, setActiveTrip] = useState<any>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [historyInitialPending, setHistoryInitialPending] = useState(false);
 
   useEffect(() => {
     async function restoreSession() {
@@ -35,6 +37,9 @@ export default function App() {
           api.refresh().catch(() => {});
           api.getCurrentTrip().then((s) => {
             if (s?.trip) setActiveTrip(s.trip);
+            if (s?.pendingReceiptsCount !== undefined) {
+              setPendingCount(s.pendingReceiptsCount);
+            }
           }).catch(() => {});
           // Sincroniza versão e dados do dispositivo com o servidor
           deviceService.syncDeviceTelemetry().catch(() => {});
@@ -126,12 +131,18 @@ export default function App() {
               activeTrip={activeTrip}
             />
           ) : activeTab === 'history' ? (
-            <HistoryScreen />
+            <HistoryScreen
+              initialTab={historyInitialPending ? 'fuel' : 'trips'}
+              initialFilterPendingOnly={historyInitialPending}
+            />
           ) : activeTab === 'profile' ? (
             <ProfileScreen
               user={currentUser}
               onLogout={handleLogout}
-              onNavigateToHistory={() => setActiveTab('history')}
+              onNavigateToHistory={() => {
+                setHistoryInitialPending(false);
+                setActiveTab('history');
+              }}
             />
           ) : (
             <HomeScreen
@@ -139,7 +150,10 @@ export default function App() {
               onLogout={handleLogout}
               onNavigateToFuel={() => setActiveModal('fuel')}
               onNavigateToTrip={() => setActiveModal('trip')}
-              onNavigateToHistory={() => setActiveTab('history')}
+              onNavigateToHistory={() => {
+                setHistoryInitialPending(true);
+                setActiveTab('history');
+              }}
               onNavigateToProfile={() => setActiveTab('profile')}
               onNavigateToSOS={() => setActiveModal('sos')}
               onNavigateToChecklist={() => setActiveModal('checklist')}
@@ -178,7 +192,10 @@ export default function App() {
             {/* 2. HISTÓRICO */}
             <TouchableOpacity
               style={styles.navItem}
-              onPress={() => setActiveTab('history')}
+              onPress={() => {
+                setHistoryInitialPending(false);
+                setActiveTab('history');
+              }}
               activeOpacity={0.8}
             >
               <View style={styles.historyIconWrapper}>
@@ -187,9 +204,11 @@ export default function App() {
                   size={22}
                   color={activeTab === 'history' ? colors.primary : colors.textMuted}
                 />
-                <View style={styles.badgePending}>
-                  <Text style={styles.badgePendingText}>1</Text>
-                </View>
+                {pendingCount > 0 && (
+                  <View style={styles.badgePending}>
+                    <Text style={styles.badgePendingText}>{pendingCount}</Text>
+                  </View>
+                )}
               </View>
               <Text style={[styles.navLabel, activeTab === 'history' && styles.navLabelActive]}>
                 Histórico

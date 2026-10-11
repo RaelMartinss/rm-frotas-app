@@ -4,7 +4,7 @@ import { api } from './api.service';
 import { CURRENT_APP_VERSION } from './app-update.service';
 
 // Build number incremental numérico obrigatório para comparação matemática
-export const CURRENT_BUILD_NUMBER = 20;
+export const CURRENT_BUILD_NUMBER = 21;
 
 const DEVICE_ID_KEY = 'rm_device_uuid';
 const LAST_SYNC_KEY = 'rm_device_last_sync_ts';

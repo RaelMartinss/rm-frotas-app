@@ -168,7 +168,7 @@ export function HomeScreen({
 
   const activeTrip = propActiveTrip || summary?.trip;
   const isTripInProgress = activeTrip?.status === 'IN_PROGRESS';
-  const pendingReceipts = summary?.pendingReceiptsCount ?? 1;
+  const pendingReceipts = summary?.pendingReceiptsCount ?? 0;
 
   const [gpsActive, setGpsActive] = useState(false);
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
@@ -568,7 +568,7 @@ export function HomeScreen({
             </View>
             <TouchableOpacity
               style={styles.attachButton}
-              onPress={onNavigateToFuel}
+              onPress={onNavigateToHistory}
               activeOpacity={0.8}
             >
               <Text style={styles.attachButtonText}>Anexar</Text>
