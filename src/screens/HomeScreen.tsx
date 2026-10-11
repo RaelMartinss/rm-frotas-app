@@ -20,6 +20,7 @@ import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
 import { storage } from '../services/storage.service';
+import { networkService } from '../services/network.service';
 import { locationService } from '../services/location.service';
 import { appUpdateService, UpdateInfo, UpdateDownloadState } from '../services/app-update.service';
 import { navigationService } from '../services/navigation.service';
@@ -66,6 +67,9 @@ export function HomeScreen({
   const [docsModalOpen, setDocsModalOpen] = useState(false);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [finalKm, setFinalKm] = useState('');
+  const [isOnline, setIsOnline] = useState(networkService.isOnline);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [syncingQueue, setSyncingQueue] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [driverPhoto, setDriverPhoto] = useState<string | null>(user.photoUrl || null);
   const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
@@ -89,10 +93,31 @@ export function HomeScreen({
     } catch {
       // Mantém estado anterior em caso de erro silencioso
     } finally {
+      api.getOfflineQueueCount().then(setOfflineQueueCount).catch(() => {});
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
+
+  const handleSyncQueue = useCallback(async () => {
+    if (syncingQueue) return;
+    setSyncingQueue(true);
+    try {
+      const result = await api.syncOfflineQueue();
+      const remaining = await api.getOfflineQueueCount();
+      setOfflineQueueCount(remaining);
+      if (result.synced > 0) {
+        Alert.alert(
+          'Sincronização Concluída',
+          `${result.synced} lançamento(s) offline foram sincronizados com sucesso!`
+        );
+        loadData(true);
+      }
+    } catch {
+    } finally {
+      setSyncingQueue(false);
+    }
+  }, [syncingQueue, loadData]);
 
   useEffect(() => {
     biometricService.isAvailable().then(setBiometricAvailable);
@@ -100,6 +125,19 @@ export function HomeScreen({
       if (cached) setDriverPhoto(cached);
     });
     loadData();
+
+    // Inscreve no status da rede em tempo real
+    const unsubNet = networkService.subscribe((online) => {
+      setIsOnline(online);
+      if (online) {
+        api.getOfflineQueueCount().then((count) => {
+          setOfflineQueueCount(count);
+          if (count > 0) {
+            handleSyncQueue();
+          }
+        }).catch(() => {});
+      }
+    });
 
     // Inscreve na central de notificações
     const unsubNotifs = notificationService.subscribe((list) => {
@@ -122,10 +160,11 @@ export function HomeScreen({
 
     return () => {
       clearTimeout(timer);
+      unsubNet();
       unsubNotifs();
       unsubUpdate();
     };
-  }, [loadData]);
+  }, [loadData, handleSyncQueue]);
 
   const activeTrip = propActiveTrip || summary?.trip;
   const isTripInProgress = activeTrip?.status === 'IN_PROGRESS';
@@ -314,6 +353,22 @@ export function HomeScreen({
 
         {/* Ações da Direita */}
         <View style={styles.headerRightActions}>
+          {offlineQueueCount > 0 && (
+            <TouchableOpacity
+              style={styles.headerQueueBadge}
+              onPress={handleSyncQueue}
+              disabled={syncingQueue}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="sync-outline"
+                size={13}
+                color="#FBBF24"
+              />
+              <Text style={styles.headerQueueBadgeText}>{offlineQueueCount}</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={styles.headerIconButton}
             onPress={() => setNotificationsOpen(true)}
@@ -336,6 +391,71 @@ export function HomeScreen({
           />
         }
       >
+        {/* BANNER MODO OFFLINE */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <View style={styles.offlineBannerLeft}>
+              <View style={styles.offlineIconBox}>
+                <Ionicons name="cloud-offline-outline" size={18} color="#F59E0B" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.offlineTitle}>Modo Offline Ativado</Text>
+                <Text style={styles.offlineSubtitle}>
+                  Sem conexão de internet. Abastecimentos salvos serão transmitidos ao reconectar.
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.offlineRetryBtn}
+              onPress={() => networkService.checkConnection()}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh-outline" size={13} color="#FBBF24" />
+              <Text style={styles.offlineRetryText}>Testar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* BANNER DE FILA OFFLINE PENDENTE */}
+        {offlineQueueCount > 0 && (
+          <View style={styles.queueBanner}>
+            <View style={styles.queueBannerLeft}>
+              <View style={styles.queueIconBox}>
+                <Ionicons name="sync-circle-outline" size={20} color="#38BDF8" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.queueTitle}>
+                  {offlineQueueCount === 1
+                    ? '1 abastecimento pendente na fila'
+                    : `${offlineQueueCount} abastecimentos pendentes na fila`}
+                </Text>
+                <Text style={styles.queueSubtitle}>
+                  {isOnline
+                    ? 'Conexão ativa. Toque para sincronizar com o servidor.'
+                    : 'Aguardando sinal de rede para sincronizar automaticamente.'}
+                </Text>
+              </View>
+            </View>
+            {isOnline && (
+              <TouchableOpacity
+                style={styles.queueSyncBtn}
+                onPress={handleSyncQueue}
+                disabled={syncingQueue}
+                activeOpacity={0.8}
+              >
+                {syncingQueue ? (
+                  <ActivityIndicator size="small" color="#080B0C" />
+                ) : (
+                  <>
+                    <Ionicons name="cloud-upload-outline" size={13} color="#080B0C" />
+                    <Text style={styles.queueSyncText}>Sincronizar</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* BANNER PROATIVO DE NOVA VERSÃO DISPONÍVEL */}
         {updateInfo && !updateDismissed && (
           <View style={styles.updateBanner}>
@@ -466,10 +586,36 @@ export function HomeScreen({
               </Text>
             </View>
 
-            <View style={gpsActive ? styles.gpsBadge : styles.gpsBadgeInactive}>
-              <View style={gpsActive ? styles.gpsDot : styles.gpsDotInactive} />
-              <Text style={gpsActive ? styles.gpsText : styles.gpsTextInactive}>
-                {gpsActive
+            <View
+              style={
+                !isOnline
+                  ? styles.gpsBadgeOffline
+                  : gpsActive
+                  ? styles.gpsBadge
+                  : styles.gpsBadgeInactive
+              }
+            >
+              <View
+                style={
+                  !isOnline
+                    ? styles.gpsDotOffline
+                    : gpsActive
+                    ? styles.gpsDot
+                    : styles.gpsDotInactive
+                }
+              />
+              <Text
+                style={
+                  !isOnline
+                    ? styles.gpsTextOffline
+                    : gpsActive
+                    ? styles.gpsText
+                    : styles.gpsTextInactive
+                }
+              >
+                {!isOnline
+                  ? 'MODO OFFLINE'
+                  : gpsActive
                   ? currentSpeed !== null && currentSpeed > 0
                     ? `${currentSpeed} km/h • GPS ATIVO`
                     : 'GPS ATIVO'
@@ -1079,6 +1225,122 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 30,
   },
+  headerQueueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  headerQueueBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FBBF24',
+  },
+  offlineBanner: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    borderRadius: 18,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  offlineBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  offlineIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offlineTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FBBF24',
+  },
+  offlineSubtitle: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  offlineRetryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  offlineRetryText: {
+    color: '#FBBF24',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  queueBanner: {
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
+    borderRadius: 18,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  queueBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  queueIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  queueTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#38BDF8',
+  },
+  queueSubtitle: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  queueSyncBtn: {
+    backgroundColor: '#38BDF8',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  queueSyncText: {
+    color: '#080B0C',
+    fontSize: 11,
+    fontWeight: '900',
+  },
   cnhBanner: {
     borderRadius: 18,
     borderWidth: 1,
@@ -1248,6 +1510,28 @@ const styles = StyleSheet.create({
   },
   gpsTextInactive: {
     color: '#94A3B8',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  gpsBadgeOffline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  gpsDotOffline: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+    marginRight: 5,
+  },
+  gpsTextOffline: {
+    color: '#F59E0B',
     fontSize: 9,
     fontWeight: '800',
   },

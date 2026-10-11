@@ -1,4 +1,5 @@
 import { storage } from './storage.service';
+import { networkService } from './network.service';
 import { AuthResponse, LoginCredentials, User } from '../types/auth';
 import {
   DriverPortalSummary,
@@ -41,18 +42,24 @@ class ApiService {
     const url = `${API_BASE_URL}${endpoint}`;
     const headers = await this.getAuthHeader(options.headers as Record<string, string>);
 
-    let response = await fetch(url, { ...options, headers });
+    try {
+      let response = await fetch(url, { ...options, headers });
+      networkService.setOnline(true);
 
-    // Se retornar 401 Unauthorized, tenta renovar o token e repetir a requisição
-    if (response.status === 401) {
-      const refreshed = await this.refresh();
-      if (refreshed) {
-        const retryHeaders = await this.getAuthHeader(options.headers as Record<string, string>);
-        response = await fetch(url, { ...options, headers: retryHeaders });
+      // Se retornar 401 Unauthorized, tenta renovar o token e repetir a requisição
+      if (response.status === 401) {
+        const refreshed = await this.refresh();
+        if (refreshed) {
+          const retryHeaders = await this.getAuthHeader(options.headers as Record<string, string>);
+          response = await fetch(url, { ...options, headers: retryHeaders });
+        }
       }
-    }
 
-    return response;
+      return response;
+    } catch (err) {
+      networkService.setOnline(false);
+      throw err;
+    }
   }
 
   // ==========================================
@@ -442,6 +449,20 @@ class ApiService {
       return { synced, failed };
     } catch {
       return { synced: 0, failed: 0 };
+    }
+  }
+
+  /**
+   * Retorna a quantidade de itens na fila offline aguardando sincronização
+   */
+  async getOfflineQueueCount(): Promise<number> {
+    try {
+      const queueStr = await storage.getItem(CACHE_KEYS.PENDING_FUEL_QUEUE);
+      if (!queueStr) return 0;
+      const queue = JSON.parse(queueStr);
+      return Array.isArray(queue) ? queue.length : 0;
+    } catch {
+      return 0;
     }
   }
 
