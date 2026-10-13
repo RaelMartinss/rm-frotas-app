@@ -33,9 +33,9 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
   const [vehicle, setVehicle] = useState<any>(defaultVehicle || null);
   const [km, setKm] = useState(defaultVehicle?.currentKm != null ? String(defaultVehicle.currentKm) : '');
   const [fuelType, setFuelType] = useState<FuelType>('DIESEL');
-  const [liters, setLiters] = useState('320.00');
-  const [pricePerLiter, setPricePerLiter] = useState('6.19');
-  const [stationName, setStationName] = useState('Posto Graal Embaixador');
+  const [liters, setLiters] = useState('');
+  const [pricePerLiter, setPricePerLiter] = useState('');
+  const [stationName, setStationName] = useState('');
   const [fullTank, setFullTank] = useState(true);
   const [notes, setNotes] = useState('');
   const [receiptPhotoUri, setReceiptPhotoUri] = useState<string | null>(null);
@@ -200,8 +200,8 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
         notes: notes.trim() || undefined,
         receiptUrl: receiptBase64 || receiptPhotoUri || undefined,
         occurredAt: new Date().toISOString(),
-        vehiclePlate: vehicle?.plate || vehicle?.licensePlate || defaultVehicle?.plate || 'BRA2E19',
-        vehicleModel: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}`.trim() : 'Volvo FH 540',
+        vehiclePlate: vehicle?.plate || vehicle?.licensePlate || defaultVehicle?.plate || '',
+        vehicleModel: vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}`.trim() : (defaultVehicle?.model || ''),
       };
 
       const res = await api.registerFuel(fuelDto);
@@ -290,10 +290,12 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
           <View style={{ flex: 1 }}>
             <View style={styles.vehiclePlateRow}>
               <View style={styles.plateBadge}>
-                <Text style={styles.plateText}>{vehicle?.plate || vehicle?.licensePlate || 'BRA2E19'}</Text>
+                <Text style={styles.plateText}>{vehicle?.plate || vehicle?.licensePlate || defaultVehicle?.plate || '---'}</Text>
               </View>
               <Text style={styles.vehicleModelText}>
-                {vehicle ? `${vehicle.brand || ''} ${vehicle.model || ''}`.trim() : 'Volvo FH 540'}
+                {vehicle
+                  ? `${vehicle.brand || ''} ${vehicle.model || ''}`.trim()
+                  : defaultVehicle?.model || 'Sem veículo'}
               </Text>
             </View>
             <View style={styles.odometerRow}>
@@ -301,7 +303,11 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
               <Text style={styles.odometerText}>
                 Odômetro atual:{' '}
                 <Text style={styles.odometerValue}>
-                  {vehicle?.currentKm != null ? Number(vehicle.currentKm).toLocaleString('pt-BR') : '148.320'} km
+                  {vehicle?.currentKm != null
+                    ? `${Number(vehicle.currentKm).toLocaleString('pt-BR')} km`
+                    : defaultVehicle?.currentKm != null
+                    ? `${Number(defaultVehicle.currentKm).toLocaleString('pt-BR')} km`
+                    : '-- km'}
                 </Text>
               </Text>
             </View>
@@ -445,7 +451,7 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
               style={styles.input}
               value={stationName}
               onChangeText={setStationName}
-              placeholder="Ex: Posto Graal Embaixador, Shell..."
+              placeholder="Ex: Posto Ipiranga, Shell, Petrobras..."
               placeholderTextColor={colors.textDim}
             />
             <MaterialCommunityIcons name="map-marker-outline" size={18} color={colors.textMuted} style={styles.inputIconRight} />

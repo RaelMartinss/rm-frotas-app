@@ -355,20 +355,31 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
         .toUpperCase()
     : 'RM';
 
-  const driverCpf = summary?.driver?.cpf || '02345678904';
-  const driverCnh = summary?.driver?.cnhNumber || '12345672551';
-  const driverCnhCat = summary?.driver?.cnhCategory || 'B';
-  const driverCnhExp = summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate || '2026-12-03';
+  const driverCpf = summary?.driver?.cpf || (profileUser as any)?.cpf || '--';
+  const driverCnh = summary?.driver?.cnhNumber || '--';
+  const driverCnhCat = summary?.driver?.cnhCategory || '--';
+  const driverCnhExp = summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate || '--';
 
-  const vehiclePlate = summary?.trip?.vehicle?.plate || 'BRA2E19';
-  const vehicleModel = summary?.trip?.vehicle?.model || summary?.trip?.vehicle?.brand || 'FH540';
-  const vehicleKm = summary?.trip?.vehicle?.currentKm ? `${summary.trip.vehicle.currentKm.toLocaleString('pt-BR')} km` : '148.320 km';
+  const vehiclePlate = summary?.trip?.vehicle?.plate || null;
+  const vehicleModel = summary?.trip?.vehicle
+    ? `${summary.trip.vehicle.brand || ''} ${summary.trip.vehicle.model || ''}`.trim()
+    : 'Sem veículo';
+  const vehicleKm = summary?.trip?.vehicle?.currentKm != null
+    ? `${summary.trip.vehicle.currentKm.toLocaleString('pt-BR')} km`
+    : '-- km';
 
-  const tripOrigin = summary?.trip?.originCity ? `${summary.trip.originCity} (${summary.trip.originState || 'PA'})` : 'Paragominas (PA)';
-  const tripDest = summary?.trip?.destinationCity ? `${summary.trip.destinationCity} (${summary.trip.destinationState || 'SP'})` : 'São Paulo (SP)';
-  const isTripActive = summary?.trip?.status === 'IN_PROGRESS' || !summary?.trip;
+  const tripOrigin = summary?.trip?.originCity
+    ? `${summary.trip.originCity} (${summary.trip.originState || ''})`.trim()
+    : summary?.trip?.originAddress || null;
+  const tripDest = summary?.trip?.destinationCity
+    ? `${summary.trip.destinationCity} (${summary.trip.destinationState || ''})`.trim()
+    : summary?.trip?.destinationAddress || null;
+  const isTripActive = summary?.trip?.status === 'IN_PROGRESS';
+  const tripDateFormatted = summary?.trip?.createdAt
+    ? new Date(summary.trip.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    : '--/--';
 
-  const monthFuelings = summary?.monthFuelingsCount ?? 1;
+  const monthFuelings = summary?.monthFuelingsCount ?? 0;
   const recentTrips = summary?.recentTripsCount ?? 0;
 
   return (
@@ -532,10 +543,14 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 style={styles.harmonizedCard}
                 activeOpacity={0.7}
                 onPress={() => {
-                  Alert.alert(
-                    'Veículo da Frota',
-                    `Placa: ${vehiclePlate}\nModelo: ${vehicleModel}\nKM Atual: ${vehicleKm}\nCRLV: Regularizado`
-                  );
+                  if (vehiclePlate) {
+                    Alert.alert(
+                      'Veículo da Frota',
+                      `Placa: ${vehiclePlate}\nModelo: ${vehicleModel}\nKM Atual: ${vehicleKm}\nCRLV: Regularizado`
+                    );
+                  } else {
+                    Alert.alert('Veículo', 'Nenhum veículo vinculado à sua escala no momento.');
+                  }
                 }}
               >
                 <View style={styles.cardHeaderRow}>
@@ -546,14 +561,14 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                   <Ionicons name="chevron-forward" size={14} color="#8E9DA8" style={{ marginLeft: 'auto' }} />
                 </View>
                 <View style={styles.cardContentBottom}>
-                  <Text style={styles.cardPrimaryValue}>{vehiclePlate}</Text>
+                  <Text style={styles.cardPrimaryValue}>{vehiclePlate || 'Nenhum'}</Text>
                   <Text style={styles.cardSecondarySub} numberOfLines={1}>
-                    {vehicleModel} • {vehicleKm}
+                    {vehiclePlate ? `${vehicleModel} • ${vehicleKm}` : 'Aguardando escala'}
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* 2. Última Viagem */}
+              {/* 2. Viagem Atual / Última Viagem */}
               <TouchableOpacity
                 style={styles.harmonizedCard}
                 activeOpacity={0.7}
@@ -565,18 +580,26 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                   <View style={styles.iconBoxGrey}>
                     <Ionicons name="location-outline" size={16} color="#CAD2D9" />
                   </View>
-                  <Text style={styles.cardHeaderLabel}>Última viagem</Text>
+                  <Text style={styles.cardHeaderLabel}>{isTripActive ? 'Viagem atual' : 'Última viagem'}</Text>
                   <Ionicons name="chevron-forward" size={14} color="#8E9DA8" style={{ marginLeft: 'auto' }} />
                 </View>
                 <View style={styles.cardContentBottom}>
                   <Text style={styles.cardPrimaryValue} numberOfLines={1}>
-                    {tripOrigin.split(' ')[0]} ➔ {tripDest.split(' ')[0]}
+                    {tripOrigin && tripDest
+                      ? `${tripOrigin.split(' ')[0]} ➔ ${tripDest.split(' ')[0]}`
+                      : 'Nenhuma viagem'}
                   </Text>
                   <Text style={styles.cardSecondarySub} numberOfLines={1}>
-                    09/10 •{' '}
-                    <Text style={{ color: '#FF7A00', fontWeight: '700' }}>
-                      {isTripActive ? 'Em andamento' : 'Concluída'}
-                    </Text>
+                    {tripOrigin && tripDest ? (
+                      <>
+                        {tripDateFormatted} •{' '}
+                        <Text style={{ color: '#FF7A00', fontWeight: '700' }}>
+                          {isTripActive ? 'Em andamento' : 'Programada'}
+                        </Text>
+                      </>
+                    ) : (
+                      'Sem escala ativa'
+                    )}
                   </Text>
                 </View>
               </TouchableOpacity>

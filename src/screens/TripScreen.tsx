@@ -20,15 +20,31 @@ interface TripScreenProps {
   onTripStarted: (tripData: any) => void;
   tripId?: string;
   defaultVehicle?: any;
+  trip?: any;
 }
 
-export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultVehicle }: TripScreenProps) {
-  const [tripId, setTripId] = useState(propTripId || 'trip_current_1');
-  const [selectedVehicle, setSelectedVehicle] = useState(defaultVehicle?.plate || 'ABC-4D88');
-  const [vehicleModel, setVehicleModel] = useState(defaultVehicle?.model || 'Scania R450 6x2');
-  const [origin, setOrigin] = useState('São Paulo (SP)');
-  const [destination, setDestination] = useState('Curitiba (PR)');
-  const [initialKm, setInitialKm] = useState(defaultVehicle?.currentKm?.toString() || '148500');
+export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultVehicle, trip }: TripScreenProps) {
+  const currentTrip = trip;
+  const currentVehicle = trip?.vehicle || defaultVehicle;
+
+  const [tripId, setTripId] = useState(propTripId || currentTrip?.id || '');
+  const [selectedVehicle, setSelectedVehicle] = useState(currentVehicle?.plate || '');
+  const [vehicleModel, setVehicleModel] = useState(
+    currentVehicle ? `${currentVehicle.brand || ''} ${currentVehicle.model || ''}`.trim() : ''
+  );
+  const [origin, setOrigin] = useState(
+    currentTrip?.originCity
+      ? `${currentTrip.originCity} (${currentTrip.originState || ''})`.trim()
+      : currentTrip?.origin || currentTrip?.originAddress || ''
+  );
+  const [destination, setDestination] = useState(
+    currentTrip?.destinationCity
+      ? `${currentTrip.destinationCity} (${currentTrip.destinationState || ''})`.trim()
+      : currentTrip?.destination || currentTrip?.destinationAddress || ''
+  );
+  const [initialKm, setInitialKm] = useState(
+    currentVehicle?.currentKm != null ? currentVehicle.currentKm.toString() : ''
+  );
   const [starting, setStarting] = useState(false);
 
   // Checklist rápido
@@ -87,6 +103,38 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
     }
   };
 
+  if (!currentTrip && !propTripId) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+              <Ionicons name="arrow-back" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.headerTitle}>Iniciar Nova Viagem</Text>
+              <Text style={styles.headerSubtitle}>Nenhuma viagem escalada</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconBox}>
+            <MaterialCommunityIcons name="calendar-clock" size={44} color={colors.primary} />
+          </View>
+          <Text style={styles.emptyTitle}>Nenhuma viagem escalada</Text>
+          <Text style={styles.emptySubtitle}>
+            Você não possui uma viagem programada aguardando início no momento. Assim que a central de despacho programar sua escala, você poderá iniciar a viagem aqui.
+          </Text>
+          <TouchableOpacity style={styles.emptyButton} onPress={onBack} activeOpacity={0.8}>
+            <Text style={styles.emptyButtonText}>Voltar ao Início</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
@@ -119,9 +167,11 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
             <View style={{ flex: 1 }}>
               <View style={styles.vehiclePlateRow}>
                 <View style={styles.plateBadge}>
-                  <Text style={styles.plateText}>{selectedVehicle}</Text>
+                  <Text style={styles.plateText}>{selectedVehicle || '---'}</Text>
                 </View>
-                <Text style={styles.vehicleModelText}>Scania R450 6x2</Text>
+                {vehicleModel ? (
+                  <Text style={styles.vehicleModelText}>{vehicleModel}</Text>
+                ) : null}
               </View>
               <Text style={styles.vehicleSubtitle}>Cavalo Mecânico • Diesel S10</Text>
             </View>
@@ -144,7 +194,7 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
               value={initialKm}
               onChangeText={setInitialKm}
               keyboardType="numeric"
-              placeholder="148500"
+              placeholder="0"
               placeholderTextColor={colors.textDim}
             />
             <Text style={styles.inputSuffix}>KM</Text>
@@ -497,5 +547,47 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 14,
+  },
+  emptyIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 107, 0, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyButton: {
+    marginTop: 10,
+    backgroundColor: '#FF6B00',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  emptyButtonText: {
+    color: '#080B0C',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

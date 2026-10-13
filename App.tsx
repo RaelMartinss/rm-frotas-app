@@ -104,7 +104,12 @@ export default function App() {
               defaultVehicle={activeTrip?.vehicle}
             />
           ) : activeModal === 'trip' ? (
-            <TripScreen onBack={() => setActiveModal(null)} onTripStarted={handleTripStarted} />
+            <TripScreen
+              onBack={() => setActiveModal(null)}
+              onTripStarted={handleTripStarted}
+              trip={activeTrip}
+              defaultVehicle={activeTrip?.vehicle}
+            />
           ) : activeModal === 'sos' ? (
             <SOSScreen
               onBack={() => setActiveModal(null)}

@@ -72,8 +72,8 @@ export function HistoryScreen({
         return {
           id: item.idempotencyKey || item.id || `offline_${Date.now()}`,
           vehicleId: p?.vehicleId || '',
-          vehiclePlate: p?.vehiclePlate || 'BRA2E19',
-          vehicleModel: p?.vehicleModel || 'Volvo FH540',
+          vehiclePlate: p?.vehiclePlate || '---',
+          vehicleModel: p?.vehicleModel || '',
           fuelType: p?.fuelType || 'DIESEL',
           liters,
           pricePerUnit: price,
@@ -314,81 +314,60 @@ export function HistoryScreen({
         {activeTab === 'trips' ? (
           // LISTA DE VIAGENS
           <View style={styles.list}>
-            {(trips.length > 0
-              ? trips.map((t) => ({
-                  id: t.id,
-                  origin: t.origin,
-                  destination: t.destination,
-                  date: t.startedAt ? new Date(t.startedAt).toLocaleDateString('pt-BR') : 'Recente',
-                  vehicle: t.vehicle || 'ABC-4D88',
-                  km: 'Rota Ativa',
-                  status: t.status === 'IN_PROGRESS' ? 'EM_ROTA' : 'CONCLUIDA',
-                }))
-              : [
-                  {
-                    id: '1',
-                    origin: 'São Paulo (SP)',
-                    destination: 'Curitiba (PR)',
-                    date: 'Hoje, 08:30',
-                    vehicle: 'ABC-4D88',
-                    km: '408 km',
-                    status: 'EM_ROTA',
-                  },
-                  {
-                    id: '2',
-                    origin: 'Campinas (SP)',
-                    destination: 'Rio de Janeiro (RJ)',
-                    date: '07/10 • 14:15',
-                    vehicle: 'ABC-4D88',
-                    km: '520 km',
-                    status: 'CONCLUIDA',
-                  },
-                  {
-                    id: '3',
-                    origin: 'Belo Horizonte (MG)',
-                    destination: 'São Paulo (SP)',
-                    date: '04/10 • 06:40',
-                    vehicle: 'XYZ-9E21',
-                    km: '586 km',
-                    status: 'CONCLUIDA',
-                  },
-                ]
-            ).map((trip) => (
-              <View key={trip.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.plateBadge}>
-                    <Text style={styles.plateText}>{trip.vehicle}</Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      trip.status === 'EM_ROTA' ? styles.statusInProgress : styles.statusDone,
-                    ]}
-                  >
-                    <Text
+            {trips.length > 0 ? (
+              trips.map((t) => ({
+                id: t.id,
+                origin: t.origin,
+                destination: t.destination,
+                date: t.startedAt ? new Date(t.startedAt).toLocaleDateString('pt-BR') : 'Recente',
+                vehicle: t.vehicle || '---',
+                km: 'Rota Ativa',
+                status: t.status === 'IN_PROGRESS' ? 'EM_ROTA' : 'CONCLUIDA',
+              })).map((trip) => (
+                <View key={trip.id} style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.plateBadge}>
+                      <Text style={styles.plateText}>{trip.vehicle}</Text>
+                    </View>
+                    <View
                       style={[
-                        styles.statusText,
-                        trip.status === 'EM_ROTA' ? { color: colors.primary } : { color: '#34D399' },
+                        styles.statusBadge,
+                        trip.status === 'EM_ROTA' ? styles.statusInProgress : styles.statusDone,
                       ]}
                     >
-                      {trip.status === 'EM_ROTA' ? 'EM ROTA' : 'CONCLUÍDA'}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.statusText,
+                          trip.status === 'EM_ROTA' ? { color: colors.primary } : { color: '#34D399' },
+                        ]}
+                      >
+                        {trip.status === 'EM_ROTA' ? 'EM ROTA' : 'CONCLUÍDA'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* ROTA */}
+                  <View style={styles.tripRoute}>
+                    <Text style={styles.routeCity}>{trip.origin}</Text>
+                    <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+                    <Text style={styles.routeCity}>{trip.destination}</Text>
+                  </View>
+
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.dateText}>{trip.date}</Text>
+                    <Text style={styles.kmText}>{trip.km}</Text>
                   </View>
                 </View>
-
-                {/* ROTA */}
-                <View style={styles.tripRoute}>
-                  <Text style={styles.routeCity}>{trip.origin}</Text>
-                  <Ionicons name="arrow-forward" size={14} color={colors.primary} />
-                  <Text style={styles.routeCity}>{trip.destination}</Text>
-                </View>
-
-                <View style={styles.cardFooter}>
-                  <Text style={styles.dateText}>{trip.date}</Text>
-                  <Text style={styles.kmText}>{trip.km}</Text>
-                </View>
+              ))
+            ) : (
+              <View style={styles.emptyCard}>
+                <Ionicons name="car-outline" size={38} color={colors.textDim} />
+                <Text style={styles.emptyTitle}>Nenhuma viagem registrada</Text>
+                <Text style={styles.emptyDesc}>
+                  Você ainda não possui viagens concluídas ou em rota no histórico.
+                </Text>
               </View>
-            ))}
+            )}
           </View>
         ) : (
           // LISTA DE ABASTECIMENTOS
@@ -424,89 +403,60 @@ export function HistoryScreen({
               )}
             </View>
 
-            {(allFuelRecords.length > 0
-              ? (filterPendingOnly
-                  ? allFuelRecords.filter((f) => f.isOfflineQueueItem || f.isPendingReceipt || !f.receiptUrl)
-                  : allFuelRecords
-                )
-              : [
-                  {
-                    id: '1',
-                    vehiclePlate: 'BRA2E19',
-                    vehicleModel: 'Volvo FH540',
-                    gasStation: 'Posto Graal Embaixador',
-                    liters: 310,
-                    fuelType: 'Diesel S10',
-                    pricePerUnit: 6.19,
-                    totalCost: 1918.9,
-                    odometerAtFueling: 148320,
-                    fueledAt: new Date().toISOString(),
-                    receiptUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
-                    notes: 'Abastecimento tanque cheio rota SP-PR',
-                    isPendingReceipt: false,
-                  },
-                  {
-                    id: '2',
-                    vehiclePlate: 'BRA2E19',
-                    vehicleModel: 'Volvo FH540',
-                    gasStation: 'Rede Ipiranga Rodovia BR-116',
-                    liters: 280,
-                    fuelType: 'Diesel S10',
-                    pricePerUnit: 6.19,
-                    totalCost: 1733.2,
-                    odometerAtFueling: 147500,
-                    fueledAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-                    receiptUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
-                    notes: 'Posto credenciado RM',
-                    isPendingReceipt: false,
-                  },
-                  {
-                    id: '3',
-                    vehiclePlate: 'BRA2E19',
-                    vehicleModel: 'Volvo FH540',
-                    gasStation: 'Posto Shell Anchieta',
-                    liters: 45,
-                    fuelType: 'Arla 32',
-                    pricePerUnit: 3.3,
-                    totalCost: 148.5,
-                    odometerAtFueling: 146800,
-                    fueledAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-                    receiptUrl: null,
-                    notes: null,
-                    isPendingReceipt: true,
-                  },
-                ].filter((item) => !filterPendingOnly || item.isPendingReceipt)
-            ).map((fuel: any) => {
-              const fuelColor = getFuelBadgeStyle(fuel.fuelType);
-              const isDead = fuel.isOfflineQueueItem && fuel.offlineStatus === 'DEAD';
-              const isSyncing = fuel.isOfflineQueueItem && fuel.offlineStatus === 'SYNCING';
-              const isRetrying = retryingId === (fuel.offlineActionId || fuel.id);
+            {(() => {
+              const records = filterPendingOnly
+                ? allFuelRecords.filter((f) => f.isOfflineQueueItem || f.isPendingReceipt || !f.receiptUrl)
+                : allFuelRecords;
 
-              return (
-                <View
-                  key={fuel.id}
-                  style={[
-                    styles.card,
-                    isDead
-                      ? styles.cardDead
-                      : fuel.isOfflineQueueItem
-                      ? styles.cardOfflinePending
-                      : fuel.isPendingReceipt || !fuel.receiptUrl
-                      ? styles.cardPendingReceipt
-                      : undefined,
-                  ]}
-                >
-                  {/* Cabeçalho do Card: Veículo e Status */}
-                  <View style={styles.cardHeader}>
-                    <View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={styles.fuelVehiclePlate}>{fuel.vehiclePlate || 'BRA2E19'}</Text>
-                        <Text style={styles.fuelVehicleModel}>• {fuel.vehicleModel || 'Caminhão'}</Text>
+              if (records.length === 0) {
+                return (
+                  <View style={styles.emptyCard}>
+                    <MaterialCommunityIcons name="gas-station-outline" size={38} color={colors.textDim} />
+                    <Text style={styles.emptyTitle}>
+                      {filterPendingOnly ? 'Nenhum comprovante pendente' : 'Nenhum abastecimento registrado'}
+                    </Text>
+                    <Text style={styles.emptyDesc}>
+                      {filterPendingOnly
+                        ? 'Todos os seus abastecimentos estão com comprovante regularizado.'
+                        : 'Os registros de abastecimento realizados aparecerão aqui.'}
+                    </Text>
+                  </View>
+                );
+              }
+
+              return records.map((fuel: any) => {
+                const fuelColor = getFuelBadgeStyle(fuel.fuelType);
+                const isDead = fuel.isOfflineQueueItem && fuel.offlineStatus === 'DEAD';
+                const isSyncing = fuel.isOfflineQueueItem && fuel.offlineStatus === 'SYNCING';
+                const isRetrying = retryingId === (fuel.offlineActionId || fuel.id);
+
+                return (
+                  <View
+                    key={fuel.id}
+                    style={[
+                      styles.card,
+                      isDead
+                        ? styles.cardDead
+                        : fuel.isOfflineQueueItem
+                        ? styles.cardOfflinePending
+                        : fuel.isPendingReceipt || !fuel.receiptUrl
+                        ? styles.cardPendingReceipt
+                        : undefined,
+                    ]}
+                  >
+                    {/* Cabeçalho do Card: Veículo e Status */}
+                    <View style={styles.cardHeader}>
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.fuelVehiclePlate}>{fuel.vehiclePlate || '---'}</Text>
+                          {fuel.vehicleModel ? (
+                            <Text style={styles.fuelVehicleModel}>• {fuel.vehicleModel}</Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.fuelDateTime}>
+                          {fuel.fueledAt ? new Date(fuel.fueledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Recente'}
+                        </Text>
                       </View>
-                      <Text style={styles.fuelDateTime}>
-                        {fuel.fueledAt ? new Date(fuel.fueledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Recente'}
-                      </Text>
-                    </View>
 
                     {/* BADGE: OFFLINE / PENDENTE / COMPLETO */}
                     {fuel.isOfflineQueueItem ? (
@@ -648,7 +598,8 @@ export function HistoryScreen({
                   )}
                 </View>
               );
-            })}
+            });
+          })()}
           </View>
         )}
       </ScrollView>
@@ -1818,5 +1769,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     color: '#080B0C',
+  },
+  emptyCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginTop: 20,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 16,
   },
 });

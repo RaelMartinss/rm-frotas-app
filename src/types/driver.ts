@@ -25,6 +25,19 @@ export interface DriverVehicle {
   status: string;
 }
 
+export interface TripWaypoint {
+  id: string;
+  order: number;
+  type: 'FUEL' | 'REST' | 'STOP' | string;
+  title: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  notes?: string | null;
+}
+
 export interface DriverCurrentTrip {
   id: string;
   status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
@@ -40,6 +53,7 @@ export interface DriverCurrentTrip {
   startedAt: string | null;
   createdAt: string;
   vehicle: DriverVehicle;
+  waypoints?: TripWaypoint[];
 }
 
 export interface DriverPortalSummary {

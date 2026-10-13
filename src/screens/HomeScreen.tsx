@@ -207,7 +207,7 @@ export function HomeScreen({
   const shouldShowCnhAlert = isCnhExpired || isCnhExpiringSoon;
 
   const formatCnhDate = (rawDate?: string) => {
-    if (!rawDate) return '18/11/2028';
+    if (!rawDate) return '--/--/----';
     try {
       const parts = rawDate.split('T')[0].split('-');
       if (parts.length === 3) {
@@ -217,9 +217,9 @@ export function HomeScreen({
       if (!isNaN(d.getTime())) {
         return d.toLocaleDateString('pt-BR');
       }
-      return '18/11/2028';
+      return '--/--/----';
     } catch {
-      return '18/11/2028';
+      return '--/--/----';
     }
   };
 
@@ -576,157 +576,175 @@ export function HomeScreen({
           </View>
         )}
 
-        {/* CARD PRINCIPAL DA VIAGEM EM DESTAQUE */}
-        <View style={styles.tripCard}>
-          <View style={styles.tripHeaderRow}>
-            <View style={styles.tripBadge}>
-              <View style={styles.badgeDot} />
-              <Text style={styles.badgeText}>
-                {isTripInProgress ? 'EM ROTA' : 'PROGRAMADA'}
-              </Text>
-            </View>
+        {/* CARD PRINCIPAL DA VIAGEM OU ESTADO VAZIO */}
+        {activeTrip ? (
+          <View style={styles.tripCard}>
+            <View style={styles.tripHeaderRow}>
+              <View style={styles.tripBadge}>
+                <View style={styles.badgeDot} />
+                <Text style={styles.badgeText}>
+                  {isTripInProgress ? 'EM ROTA' : 'PROGRAMADA'}
+                </Text>
+              </View>
 
-            <View
-              style={
-                !isOnline
-                  ? styles.gpsBadgeOffline
-                  : gpsActive
-                  ? styles.gpsBadge
-                  : styles.gpsBadgeInactive
-              }
-            >
               <View
                 style={
                   !isOnline
-                    ? styles.gpsDotOffline
+                    ? styles.gpsBadgeOffline
                     : gpsActive
-                    ? styles.gpsDot
-                    : styles.gpsDotInactive
-                }
-              />
-              <Text
-                style={
-                  !isOnline
-                    ? styles.gpsTextOffline
-                    : gpsActive
-                    ? styles.gpsText
-                    : styles.gpsTextInactive
+                    ? styles.gpsBadge
+                    : styles.gpsBadgeInactive
                 }
               >
-                {!isOnline
-                  ? 'MODO OFFLINE'
-                  : gpsActive
-                  ? currentSpeed !== null && currentSpeed > 0
-                    ? `${currentSpeed} km/h • GPS ATIVO`
-                    : 'GPS ATIVO'
-                  : 'GPS PAUSADO'}
+                <View
+                  style={
+                    !isOnline
+                      ? styles.gpsDotOffline
+                      : gpsActive
+                      ? styles.gpsDot
+                      : styles.gpsDotInactive
+                  }
+                />
+                <Text
+                  style={
+                    !isOnline
+                      ? styles.gpsTextOffline
+                      : gpsActive
+                      ? styles.gpsText
+                      : styles.gpsTextInactive
+                  }
+                >
+                  {!isOnline
+                    ? 'MODO OFFLINE'
+                    : gpsActive
+                    ? currentSpeed !== null && currentSpeed > 0
+                      ? `${currentSpeed} km/h • GPS ATIVO`
+                      : 'GPS ATIVO'
+                    : 'GPS PAUSADO'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Rota Origem → Destino */}
+            <View style={styles.routeRow}>
+              <Text style={styles.routeCity}>
+                {activeTrip.originCity
+                  ? `${activeTrip.originCity} (${activeTrip.originState || ''})`.trim()
+                  : activeTrip.origin || activeTrip.originAddress || 'Origem'}
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color={colors.primary} />
+              <Text style={styles.routeCity}>
+                {activeTrip.destinationCity
+                  ? `${activeTrip.destinationCity} (${activeTrip.destinationState || ''})`.trim()
+                  : activeTrip.destination || activeTrip.destinationAddress || 'Destino'}
               </Text>
             </View>
-          </View>
 
-          {/* Rota Origem → Destino */}
-          <View style={styles.routeRow}>
-            <Text style={styles.routeCity}>
-              {activeTrip?.originCity
-                ? `${activeTrip.originCity} (${activeTrip.originState || 'SP'})`
-                : activeTrip?.origin || 'São Paulo (SP)'}
-            </Text>
-            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
-            <Text style={styles.routeCity}>
-              {activeTrip?.destinationCity
-                ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
-                : activeTrip?.destination || 'Curitiba (PR)'}
-            </Text>
-          </View>
-
-          {/* Horários Dinâmicos da Viagem */}
-          <View style={styles.tripTimingGrid}>
-            <View style={styles.timingItem}>
-              <View style={styles.timingIconBox}>
-                <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+            {/* Horários Dinâmicos da Viagem */}
+            <View style={styles.tripTimingGrid}>
+              <View style={styles.timingItem}>
+                <View style={styles.timingIconBox}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={styles.timingLabel}>
+                    {isTripInProgress ? 'Saída / Início' : 'Saída prevista'}
+                  </Text>
+                  <Text style={styles.timingValue}>
+                    {formatTripDateTime(activeTrip.scheduledDate || activeTrip.startedAt || activeTrip.createdAt)}
+                  </Text>
+                </View>
               </View>
-              <View>
-                <Text style={styles.timingLabel}>
-                  {isTripInProgress ? 'Saída / Início' : 'Saída prevista'}
-                </Text>
-                <Text style={styles.timingValue}>
-                  {formatTripDateTime(activeTrip?.scheduledDate || activeTrip?.startedAt || activeTrip?.createdAt)}
-                </Text>
+
+              <View style={styles.timingItem}>
+                <View style={styles.timingIconBox}>
+                  <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                </View>
+                <View>
+                  <Text style={styles.timingLabel}>Previsão Chegada</Text>
+                  <Text style={styles.timingValue}>
+                    {formatTripDateTime(
+                      activeTrip.estimatedArrivalDate || activeTrip.scheduledDate,
+                      activeTrip.estimatedArrivalDate ? 0 : 6
+                    )}
+                  </Text>
+                </View>
               </View>
             </View>
 
-            <View style={styles.timingItem}>
-              <View style={styles.timingIconBox}>
-                <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+            {/* Botão de Navegação Externa (Waze / Maps) */}
+            <TouchableOpacity
+              style={styles.gpsNavButton}
+              onPress={() => {
+                if (onNavigateToRoute) {
+                  onNavigateToRoute();
+                } else {
+                  const dest = activeTrip.destinationCity
+                    ? `${activeTrip.destinationCity} (${activeTrip.destinationState || ''})`
+                    : activeTrip.destination || activeTrip.destinationAddress || '';
+                  if (dest) navigationService.showNavigationOptions(dest);
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={styles.gpsNavLeft}>
+                <View style={styles.gpsNavIconWrap}>
+                  <MaterialCommunityIcons name="navigation-variant" size={16} color="#05C8F7" />
+                </View>
+                <Text style={styles.gpsNavText}>Navegar no Waze / Google Maps</Text>
               </View>
-              <View>
-                <Text style={styles.timingLabel}>Previsão Chegada</Text>
-                <Text style={styles.timingValue}>
-                  {formatTripDateTime(
-                    activeTrip?.estimatedArrivalDate || activeTrip?.scheduledDate,
-                    activeTrip?.estimatedArrivalDate ? 0 : 6
+              <Ionicons name="chevron-forward" size={16} color="#64748B" />
+            </TouchableOpacity>
+
+            {/* Botão de Iniciar/Concluir Viagem */}
+            <TouchableOpacity
+              style={[styles.startTripButton, completing && { opacity: 0.7 }]}
+              onPress={handleTripAction}
+              disabled={completing}
+              activeOpacity={0.85}
+            >
+              <View style={styles.startTripButtonInner}>
+                <View style={styles.playIconBadge}>
+                  {completing ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons
+                      name={isTripInProgress ? 'checkmark' : 'play'}
+                      size={14}
+                      color={colors.primary}
+                    />
                   )}
+                </View>
+                <Text style={styles.startTripButtonText}>
+                  {completing
+                    ? 'Concluindo...'
+                    : isTripInProgress
+                    ? 'Concluir Viagem'
+                    : 'Iniciar Viagem'}
+                </Text>
+              </View>
+              <Ionicons name="arrow-forward" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.emptyTripCard}>
+            <View style={styles.emptyTripHeader}>
+              <View style={styles.emptyTripIconWrap}>
+                <MaterialCommunityIcons name="calendar-clock" size={26} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.emptyTripTitle}>Nenhuma viagem escalada</Text>
+                <Text style={styles.emptyTripSubtitle}>
+                  Aguardando despacho pela central de operações
                 </Text>
               </View>
             </View>
+            <Text style={styles.emptyTripText}>
+              Assim que a operação programar um trajeto para você, o itinerário, veículo e paradas aparecerão aqui automaticamente.
+            </Text>
           </View>
+        )}
 
-          {/* Botão de Navegação Externa (Waze / Maps) */}
-          <TouchableOpacity
-            style={styles.gpsNavButton}
-            onPress={() => {
-              if (onNavigateToRoute) {
-                onNavigateToRoute();
-              } else {
-                const dest = activeTrip?.destinationCity
-                  ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
-                  : activeTrip?.destination || 'Curitiba (PR)';
-                navigationService.showNavigationOptions(dest);
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={styles.gpsNavLeft}>
-              <View style={styles.gpsNavIconWrap}>
-                <MaterialCommunityIcons name="navigation-variant" size={16} color="#05C8F7" />
-              </View>
-              <Text style={styles.gpsNavText}>Navegar no Waze / Google Maps</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#64748B" />
-          </TouchableOpacity>
-
-          {/* Botão de Iniciar/Concluir Viagem */}
-          <TouchableOpacity
-            style={[styles.startTripButton, completing && { opacity: 0.7 }]}
-            onPress={handleTripAction}
-            disabled={completing}
-            activeOpacity={0.85}
-          >
-            <View style={styles.startTripButtonInner}>
-              <View style={styles.playIconBadge}>
-                {completing ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Ionicons
-                    name={isTripInProgress ? 'checkmark' : 'play'}
-                    size={14}
-                    color={colors.primary}
-                  />
-                )}
-              </View>
-              <Text style={styles.startTripButtonText}>
-                {completing
-                  ? 'Concluindo...'
-                  : isTripInProgress
-                  ? 'Concluir Viagem'
-                  : 'Iniciar Viagem'}
-              </Text>
-            </View>
-            <Ionicons name="arrow-forward" size={16} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* SEÇÃO AÇÕES RÁPIDAS (GRID 2x2) */}
         {/* SEÇÃO AÇÕES RÁPIDAS (ESTILO BANCO INTER) */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>AÇÕES RÁPIDAS</Text>
@@ -752,11 +770,11 @@ export function HomeScreen({
             style={styles.interCard}
             onPress={() => {
               if (onNavigateToRoute) onNavigateToRoute();
-              else {
-                const dest = activeTrip?.destinationCity
-                  ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
-                  : activeTrip?.destination || 'Curitiba (PR)';
-                navigationService.showNavigationOptions(dest);
+              else if (activeTrip) {
+                const dest = activeTrip.destinationCity
+                  ? `${activeTrip.destinationCity} (${activeTrip.destinationState || ''})`
+                  : activeTrip.destination || '';
+                if (dest) navigationService.showNavigationOptions(dest);
               }
             }}
             activeOpacity={0.7}
@@ -889,48 +907,63 @@ export function HomeScreen({
 
             <ScrollView showsVerticalScrollIndicator={false} style={styles.docsModalScroll}>
               {/* CARD 1: VEÍCULO ATUAL (CRLV) */}
+              {/* CARD 1: VEÍCULO ATUAL (CRLV) */}
               <View style={styles.docSectionCard}>
                 <View style={styles.docSectionTop}>
                   <View style={styles.docSectionTitleRow}>
                     <MaterialCommunityIcons name="truck-outline" size={16} color="#FF7A00" />
                     <Text style={styles.docSectionTitle}>VEÍCULO DESIGNADO</Text>
                   </View>
-                  <View style={styles.plateBadge}>
-                    <Text style={styles.plateBadgeText}>
-                      {activeTrip?.vehicle?.plate || summary?.trip?.vehicle?.plate || 'BRA2E19'}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.docVehicleName}>
-                  {(activeTrip?.vehicle?.brand || summary?.trip?.vehicle?.brand || 'Volvo')} {(activeTrip?.vehicle?.model || summary?.trip?.vehicle?.model || 'FH540')} ({activeTrip?.vehicle?.year || summary?.trip?.vehicle?.year || '2023'})
-                </Text>
-
-                <View style={styles.docDetailsDivider} />
-
-                <View style={styles.docDetailsGrid}>
-                  <View style={styles.docDetailRow}>
-                    <Text style={styles.docDetailLabel}>RENAVAM:</Text>
-                    <Text style={styles.docDetailValueMono}>
-                      {activeTrip?.vehicle?.renavam || summary?.trip?.vehicle?.renavam || '00984712391'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.docDetailRow}>
-                    <Text style={styles.docDetailLabel}>Vencimento CRLV:</Text>
-                    <Text style={styles.docDetailValue}>
-                      {activeTrip?.vehicle?.crlvExpiration || summary?.trip?.vehicle?.crlvExpiration || '15/10/2026'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.docDetailRow}>
-                    <Text style={styles.docDetailLabel}>Situação do Veículo:</Text>
-                    <View style={styles.docStatusPill}>
-                      <View style={styles.docStatusDotGreen} />
-                      <Text style={styles.docStatusTextGreen}>Licenciado / Em dia</Text>
+                  {(activeTrip?.vehicle || summary?.trip?.vehicle) && (
+                    <View style={styles.plateBadge}>
+                      <Text style={styles.plateBadgeText}>
+                        {activeTrip?.vehicle?.plate || summary?.trip?.vehicle?.plate}
+                      </Text>
                     </View>
-                  </View>
+                  )}
                 </View>
+
+                {(activeTrip?.vehicle || summary?.trip?.vehicle) ? (
+                  <>
+                    <Text style={styles.docVehicleName}>
+                      {activeTrip?.vehicle?.brand || summary?.trip?.vehicle?.brand || ''} {activeTrip?.vehicle?.model || summary?.trip?.vehicle?.model || ''} {activeTrip?.vehicle?.year || summary?.trip?.vehicle?.year ? `(${activeTrip?.vehicle?.year || summary?.trip?.vehicle?.year})` : ''}
+                    </Text>
+
+                    <View style={styles.docDetailsDivider} />
+
+                    <View style={styles.docDetailsGrid}>
+                      <View style={styles.docDetailRow}>
+                        <Text style={styles.docDetailLabel}>RENAVAM:</Text>
+                        <Text style={styles.docDetailValueMono}>
+                          {activeTrip?.vehicle?.renavam || summary?.trip?.vehicle?.renavam || '--'}
+                        </Text>
+                      </View>
+
+                      <View style={styles.docDetailRow}>
+                        <Text style={styles.docDetailLabel}>Vencimento CRLV:</Text>
+                        <Text style={styles.docDetailValue}>
+                          {activeTrip?.vehicle?.crlvExpiration || summary?.trip?.vehicle?.crlvExpiration || '--'}
+                        </Text>
+                      </View>
+
+                      <View style={styles.docDetailRow}>
+                        <Text style={styles.docDetailLabel}>Situação do Veículo:</Text>
+                        <View style={styles.docStatusPill}>
+                          <View style={styles.docStatusDotGreen} />
+                          <Text style={styles.docStatusTextGreen}>
+                            {activeTrip?.vehicle?.status === 'AVAILABLE' ? 'Disponível' : activeTrip?.vehicle?.status || 'Em dia'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <View style={{ paddingVertical: 10 }}>
+                    <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
+                      Nenhum veículo vinculado no momento. O veículo será associado assim que uma viagem for escalada pela operação.
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* CARD 2: MOTORISTA (CNH DIGITAL) */}
@@ -949,7 +982,7 @@ export function HomeScreen({
                 </View>
 
                 <Text style={styles.docDriverName}>
-                  {summary?.driver?.name || user.name || 'Rael Martins'}
+                  {summary?.driver?.name || user.name || 'Motorista'}
                 </Text>
 
                 <View style={styles.docDetailsDivider} />
@@ -958,7 +991,7 @@ export function HomeScreen({
                   <View style={styles.docDetailRow}>
                     <Text style={styles.docDetailLabel}>Número CNH:</Text>
                     <Text style={styles.docDetailValueMono}>
-                      {summary?.driver?.cnhNumber ? `****${summary.driver.cnhNumber.slice(-4)}` : '****2551'} (Cat. {summary?.driver?.cnhCategory || 'B'})
+                      {summary?.driver?.cnhNumber ? `****${summary.driver.cnhNumber.slice(-4)}` : '----'} (Cat. {summary?.driver?.cnhCategory || 'B'})
                     </Text>
                   </View>
 
@@ -1034,26 +1067,26 @@ export function HomeScreen({
                 <Ionicons name="location-sharp" size={14} color={colors.primary} />
                 <Text style={styles.completeRouteText}>
                   {activeTrip?.originCity
-                    ? `${activeTrip.originCity} (${activeTrip.originState || 'SP'})`
-                    : activeTrip?.origin || 'Paragominas (PA)'}
+                    ? `${activeTrip.originCity} (${activeTrip.originState || ''})`.trim()
+                    : activeTrip?.origin || activeTrip?.originAddress || 'Origem'}
                   {' → '}
                   {activeTrip?.destinationCity
-                    ? `${activeTrip.destinationCity} (${activeTrip.destinationState || 'PR'})`
-                    : activeTrip?.destination || 'São Luís (MA)'}
+                    ? `${activeTrip.destinationCity} (${activeTrip.destinationState || ''})`.trim()
+                    : activeTrip?.destination || activeTrip?.destinationAddress || 'Destino'}
                 </Text>
               </View>
-              <View style={styles.completeVehicleRow}>
-                <View style={styles.completePlateBadge}>
-                  <Text style={styles.completePlateText}>
-                    {activeTrip?.vehicle?.plate || 'BRA2E19'}
+              {activeTrip?.vehicle && (
+                <View style={styles.completeVehicleRow}>
+                  <View style={styles.completePlateBadge}>
+                    <Text style={styles.completePlateText}>
+                      {activeTrip.vehicle.plate}
+                    </Text>
+                  </View>
+                  <Text style={styles.completeVehicleModel}>
+                    {`${activeTrip.vehicle.brand || ''} ${activeTrip.vehicle.model || ''}`.trim()}
                   </Text>
                 </View>
-                <Text style={styles.completeVehicleModel}>
-                  {activeTrip?.vehicle
-                    ? `${activeTrip.vehicle.brand || ''} ${activeTrip.vehicle.model || ''}`.trim()
-                    : 'Volvo FH 540'}
-                </Text>
-              </View>
+              )}
             </View>
 
             {/* Odômetro Anterior */}
@@ -1065,7 +1098,7 @@ export function HomeScreen({
               <Text style={styles.previousKmValue}>
                 {activeTrip?.vehicle?.currentKm != null
                   ? `${Number(activeTrip.vehicle.currentKm).toLocaleString('pt-BR')} km`
-                  : '148.320 km'}
+                  : '-- km'}
               </Text>
             </View>
 
@@ -1085,8 +1118,8 @@ export function HomeScreen({
               </View>
               {(() => {
                 const parsed = parseInt(finalKm.replace(/\D/g, ''), 10);
-                const prev = activeTrip?.vehicle?.currentKm ?? 148320;
-                if (!isNaN(parsed) && parsed < prev) {
+                const prev = activeTrip?.vehicle?.currentKm ?? 0;
+                if (!isNaN(parsed) && prev > 0 && parsed < prev) {
                   return (
                     <Text style={styles.completeKmWarning}>
                       ⚠️ Odômetro informado é menor que o anterior ({Number(prev).toLocaleString('pt-BR')} km).
@@ -1432,6 +1465,45 @@ const styles = StyleSheet.create({
     color: '#080B0C',
     fontSize: 11,
     fontWeight: '900',
+  },
+  emptyTripCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    gap: 12,
+  },
+  emptyTripHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  emptyTripIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 107, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTripTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  emptyTripSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  emptyTripText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 19,
   },
   tripCard: {
     backgroundColor: colors.surface,

@@ -30,57 +30,88 @@ interface Waypoint {
 }
 
 export function RouteScreen({ onBack, activeTrip }: RouteScreenProps) {
-  const originCity = activeTrip?.originCity || 'São Paulo';
-  const originState = activeTrip?.originState || 'SP';
-  const originAddress = activeTrip?.originAddress || 'Av. das Nações Unidas, 12901 - Brooklin';
+  if (!activeTrip) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="#0B0E11" />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <View style={styles.headerTitles}>
+            <Text style={styles.headerTitle}>Itinerário da Viagem</Text>
+            <Text style={styles.headerSubtitle}>Nenhuma viagem escalada</Text>
+          </View>
+        </View>
 
-  const destCity = activeTrip?.destinationCity || 'Curitiba';
-  const destState = activeTrip?.destinationState || 'PR';
-  const destAddress = activeTrip?.destinationAddress || 'Av. Juscelino Kubitschek de Oliveira, 2600 - CIC';
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconBox}>
+            <MaterialCommunityIcons name="map-marker-off-outline" size={44} color={colors.primary} />
+          </View>
+          <Text style={styles.emptyTitle}>Nenhuma viagem escalada</Text>
+          <Text style={styles.emptySubtitle}>
+            Você não possui viagens ativas ou programadas no momento. Assim que a operação despachar um trajeto, os pontos de parada e a navegação estarão disponíveis aqui.
+          </Text>
+          <TouchableOpacity style={styles.emptyButton} onPress={onBack} activeOpacity={0.8}>
+            <Text style={styles.emptyButtonText}>Voltar ao Início</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-  // Paradas da rota
-  const waypoints: Waypoint[] = [
-    {
-      id: 'wp-origin',
-      type: 'ORIGIN',
-      title: 'Ponto de Partida',
-      subtitle: `${originCity} (${originState})`,
-      address: originAddress,
-      city: originCity,
-      state: originState,
-      isCompleted: activeTrip?.status === 'IN_PROGRESS',
-    },
-    {
-      id: 'wp-fuel',
-      type: 'FUEL_STOP',
-      title: 'Posto Homologado RM (Parada Recomendada)',
-      subtitle: 'Posto Graal Embaixador • BR-116 Km 299',
-      address: 'Rodovia Régis Bittencourt, Km 299',
-      city: 'Itapecerica da Serra',
-      state: 'SP',
-      isCompleted: false,
-    },
-    {
-      id: 'wp-rest',
-      type: 'REST_STOP',
-      title: 'Ponto de Apoio & Descanso Lei do Motorista',
-      subtitle: 'Restaurante & Estacionamento Seguro 24h',
-      address: 'Rod. Régis Bittencourt, Km 430',
-      city: 'Registro',
-      state: 'SP',
-      isCompleted: false,
-    },
-    {
-      id: 'wp-dest',
-      type: 'DESTINATION',
-      title: 'Destino Final / Entrega',
-      subtitle: `${destCity} (${destState})`,
-      address: destAddress,
-      city: destCity,
-      state: destState,
-      isCompleted: false,
-    },
-  ];
+  const originCity = activeTrip.originCity || 'Origem';
+  const originState = activeTrip.originState || '';
+  const originAddress = activeTrip.originAddress || '';
+
+  const destCity = activeTrip.destinationCity || 'Destino';
+  const destState = activeTrip.destinationState || '';
+  const destAddress = activeTrip.destinationAddress || '';
+
+  // Monta waypoints dinâmicos da viagem
+  const waypoints: Waypoint[] = [];
+
+  // 1. Ponto de Partida
+  waypoints.push({
+    id: 'wp-origin',
+    type: 'ORIGIN',
+    title: 'Ponto de Partida',
+    subtitle: [originCity, originState].filter(Boolean).join(' - ') || originAddress,
+    address: originAddress,
+    city: originCity,
+    state: originState,
+    isCompleted: activeTrip?.status === 'IN_PROGRESS',
+  });
+
+  // 2. Paradas cadastradas no backend
+  if (Array.isArray(activeTrip.waypoints) && activeTrip.waypoints.length > 0) {
+    activeTrip.waypoints.forEach((wp: any, idx: number) => {
+      const isFuel = wp.type === 'FUEL';
+      const isRest = wp.type === 'REST';
+      waypoints.push({
+        id: wp.id || `wp-${idx}`,
+        type: isFuel ? 'FUEL_STOP' : isRest ? 'REST_STOP' : 'FUEL_STOP',
+        title: wp.title || (isFuel ? 'Posto Homologado' : 'Parada Operacional'),
+        subtitle: [wp.city, wp.state].filter(Boolean).join(' - ') || wp.notes || '',
+        address: wp.address || [wp.city, wp.state].filter(Boolean).join(' - ') || '',
+        city: wp.city || '',
+        state: wp.state || '',
+        isCompleted: false,
+      });
+    });
+  }
+
+  // 3. Destino Final
+  waypoints.push({
+    id: 'wp-dest',
+    type: 'DESTINATION',
+    title: 'Destino Final / Entrega',
+    subtitle: [destCity, destState].filter(Boolean).join(' - ') || destAddress,
+    address: destAddress,
+    city: destCity,
+    state: destState,
+    isCompleted: false,
+  });
 
   const handleNavigateToDestination = (app: 'maps' | 'waze') => {
     const target: NavigationTarget = {
@@ -456,5 +487,47 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 2,
     lineHeight: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 14,
+  },
+  emptyIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 107, 0, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 0, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyButton: {
+    marginTop: 10,
+    backgroundColor: '#FF6B00',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  emptyButtonText: {
+    color: '#080B0C',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });
