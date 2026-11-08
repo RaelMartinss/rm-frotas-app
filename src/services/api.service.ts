@@ -14,7 +14,7 @@ import {
   TripChecklistDTO,
 } from '../types/driver';
 
-export const API_BASE_URL = 'https://rm-frotas.duckdns.org/v1';
+export const API_BASE_URL = 'https://api.rmfrotas.com.br/v1';
 
 const CACHE_KEYS = {
   CURRENT_TRIP: 'rm_driver_current_trip',
@@ -68,14 +68,19 @@ class ApiService {
   // ==========================================
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...credentials,
-        deviceInfo: { platform: 'mobile' },
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...credentials,
+          deviceInfo: { platform: 'mobile' },
+        }),
+      });
+    } catch {
+      throw new Error('Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.');
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
