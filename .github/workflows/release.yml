@@ -83,11 +83,11 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: release-assets/rm-frotas.apk
           body: |
-            ✨ **Novidades e Aprimoramentos da Versão:**
-            • Novo layout do Perfil do Motorista e tela de Configurações da Conta
-            • Otimização visual dos cards operacionais e navegação da frota
-            • Atualizador nativo in-app com download direto em segundo plano
-            • Melhorias contínuas de estabilidade, segurança e performance
+            ✨ **Novidades e Correções da Versão:**
+            • Correção dos status das viagens no Histórico Operacional (Em Rota, Programada, Concluída e Cancelada)
+            • Exibição real de datas de saída/chegada nos cards de viagens concluídas (remoção do rótulo fixo "Rota Ativa")
+            • Sincronização imediata de cache e dados do veículo ao iniciar ou concluir viagens
+            • Contadores reais nas abas do histórico e ajuste do status de viagem escalada no Perfil
           generate_release_notes: false
           draft: false
           prerelease: false

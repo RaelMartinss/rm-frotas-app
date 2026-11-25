@@ -1,6 +1,6 @@
 import { NativeModules, DeviceEventEmitter, Platform, Linking, Alert } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.0.25';
+export const CURRENT_APP_VERSION = '1.0.26';
 export const GITHUB_REPO = 'RaelMartinss/rm-frotas-app';
 
 const { AppInstaller } = NativeModules;

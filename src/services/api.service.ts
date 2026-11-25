@@ -205,7 +205,9 @@ class ApiService {
   /**
    * Inicia a viagem com 1 toque no celular
    */
-  async startTrip(tripId: string): Promise<{ message: string; tripId: string; status: string }> {
+  async startTrip(
+    tripId: string
+  ): Promise<{ message: string; tripId: string; status: string; startedAt?: string }> {
     const res = await this.authenticatedFetch('/driver-portal/start-trip', {
       method: 'POST',
       body: JSON.stringify({ tripId }),
@@ -216,7 +218,12 @@ class ApiService {
       throw new Error(err.message || 'Falha ao iniciar viagem.');
     }
 
-    return res.json();
+    const data = await res.json();
+    await Promise.all([
+      storage.removeItem(CACHE_KEYS.CURRENT_TRIP),
+      storage.removeItem(CACHE_KEYS.HISTORY),
+    ]).catch(() => {});
+    return data;
   }
 
   /**
@@ -236,7 +243,12 @@ class ApiService {
       throw new Error(err.message || 'Falha ao concluir viagem.');
     }
 
-    return res.json();
+    const data = await res.json();
+    await Promise.all([
+      storage.removeItem(CACHE_KEYS.CURRENT_TRIP),
+      storage.removeItem(CACHE_KEYS.HISTORY),
+    ]).catch(() => {});
+    return data;
   }
 
   /**

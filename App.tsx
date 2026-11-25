@@ -61,9 +61,12 @@ export default function App() {
   };
 
   const handleTripStarted = (tripData: any) => {
-    setActiveTrip(tripData);
+    setActiveTrip((prev: any) => ({ ...(prev || {}), ...tripData, status: 'IN_PROGRESS' }));
     setActiveModal(null);
     setActiveTab('home');
+    api.getCurrentTrip().then((s) => {
+      if (s?.trip) setActiveTrip(s.trip);
+    }).catch(() => {});
   };
 
   if (initializing) {
@@ -164,7 +167,12 @@ export default function App() {
               onNavigateToChecklist={() => setActiveModal('checklist')}
               onNavigateToRoute={() => setActiveModal('route')}
               activeTrip={activeTrip}
-              onTripCompleted={() => setActiveTrip(null)}
+              onTripCompleted={() => {
+                setActiveTrip(null);
+                api.getCurrentTrip().then((s) => {
+                  setActiveTrip(s?.trip || null);
+                }).catch(() => {});
+              }}
             />
           )}
         </View>

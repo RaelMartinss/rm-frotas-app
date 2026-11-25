@@ -375,6 +375,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
     ? `${summary.trip.destinationCity} (${summary.trip.destinationState || ''})`.trim()
     : summary?.trip?.destinationAddress || null;
   const isTripActive = summary?.trip?.status === 'IN_PROGRESS';
+  const hasScheduledOrActiveTrip = Boolean(summary?.trip);
   const tripDateFormatted = summary?.trip?.createdAt
     ? new Date(summary.trip.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
     : '--/--';
@@ -580,7 +581,13 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                   <View style={styles.iconBoxGrey}>
                     <Ionicons name="location-outline" size={16} color="#CAD2D9" />
                   </View>
-                  <Text style={styles.cardHeaderLabel}>{isTripActive ? 'Viagem atual' : 'Última viagem'}</Text>
+                  <Text style={styles.cardHeaderLabel}>
+                    {isTripActive
+                      ? 'Viagem atual'
+                      : hasScheduledOrActiveTrip
+                      ? 'Viagem escalada'
+                      : 'Última viagem'}
+                  </Text>
                   <Ionicons name="chevron-forward" size={14} color="#8E9DA8" style={{ marginLeft: 'auto' }} />
                 </View>
                 <View style={styles.cardContentBottom}>
@@ -593,7 +600,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                     {tripOrigin && tripDest ? (
                       <>
                         {tripDateFormatted} •{' '}
-                        <Text style={{ color: '#FF7A00', fontWeight: '700' }}>
+                        <Text
+                          style={{
+                            color: isTripActive ? '#FF7A00' : '#FBBF24',
+                            fontWeight: '700',
+                          }}
+                        >
                           {isTripActive ? 'Em andamento' : 'Programada'}
                         </Text>
                       </>

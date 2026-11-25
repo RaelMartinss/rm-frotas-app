@@ -40,7 +40,7 @@ export interface TripWaypoint {
 
 export interface DriverCurrentTrip {
   id: string;
-  status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'PLANNED' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   originAddress: string;
   originCity: string;
   originState: string;
@@ -91,10 +91,11 @@ export interface DriverFuelDTO {
 
 export interface DriverHistoryItem {
   id: string;
-  status: string;
+  status: 'PLANNED' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | string;
   origin: string;
   destination: string;
   vehicle: string;
+  scheduledDate?: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;

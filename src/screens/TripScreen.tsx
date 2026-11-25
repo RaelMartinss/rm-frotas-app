@@ -73,11 +73,16 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
 
     setStarting(true);
     try {
-      // 1. Salvar checklist na API
-      if (tripId && !tripId.startsWith('trip_current_')) {
-        await api.saveChecklist(tripId, checklist).catch(() => {});
-        // 2. Iniciar viagem na API
-        await api.startTrip(tripId);
+      const effectiveTripId = tripId || currentTrip?.id || '';
+      let startedAtIso = new Date().toISOString();
+
+      // 1. Salvar checklist e iniciar viagem na API
+      if (effectiveTripId && !effectiveTripId.startsWith('trip_current_')) {
+        await api.saveChecklist(effectiveTripId, checklist).catch(() => {});
+        const startRes = await api.startTrip(effectiveTripId);
+        if (startRes?.startedAt) {
+          startedAtIso = startRes.startedAt;
+        }
       }
 
       Alert.alert('Viagem Iniciada', `Boa viagem! Rota: ${origin} → ${destination}`, [
@@ -85,13 +90,20 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
           text: 'OK',
           onPress: () => {
             onTripStarted({
-              id: tripId,
+              ...(currentTrip || {}),
+              id: effectiveTripId,
               status: 'IN_PROGRESS',
+              vehicle: currentVehicle
+                ? {
+                    ...currentVehicle,
+                    currentKm: parseInt(initialKm.replace(/\D/g, ''), 10) || currentVehicle.currentKm,
+                  }
+                : undefined,
               vehiclePlate: selectedVehicle,
               origin,
               destination,
               initialKm,
-              startedAt: new Date().toISOString(),
+              startedAt: startedAtIso,
             });
           },
         },

@@ -102,13 +102,88 @@ export function HistoryScreen({
     loadData();
   }, [loadData]);
 
-  // Contadores dinâmicos
+  // Contadores dinâmicos reais (sem valores mockados)
   const allFuelRecords = [...offlineFuelRecords, ...fuelRecords];
-  const tripsCount = trips.length > 0 ? trips.length : 12;
-  const fuelCount = allFuelRecords.length > 0 ? allFuelRecords.length : 8;
+  const tripsCount = trips.length;
+  const fuelCount = allFuelRecords.length;
   const receiptsPending = fuelRecords.filter((f) => f.isPendingReceipt || !f.receiptUrl).length;
   const offlinePending = offlineFuelRecords.length;
   const pendingCount = receiptsPending + offlinePending;
+
+  const formatHistoryDate = (iso?: string | null) => {
+    if (!iso) return null;
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleDateString('pt-BR');
+    } catch {
+      return null;
+    }
+  };
+
+  const formatHistoryDateTime = (iso?: string | null) => {
+    if (!iso) return null;
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      const date = d.toLocaleDateString('pt-BR');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${date} • ${hours}:${minutes}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const getTripCardPresentation = (t: DriverHistoryItem) => {
+    const normalized = (t.status || '').toUpperCase();
+    const startedDate = formatHistoryDate(t.startedAt);
+    const startedDateTime = formatHistoryDateTime(t.startedAt);
+    const completedDate = formatHistoryDate(t.completedAt);
+    const scheduledOrCreatedDate = formatHistoryDate(t.scheduledDate || t.createdAt) || '--/--/----';
+
+    if (normalized === 'IN_PROGRESS' || normalized === 'EM_ANDAMENTO' || normalized === 'EM_ROTA') {
+      return {
+        badgeLabel: 'EM ROTA',
+        badgeStyle: styles.statusInProgress,
+        badgeTextColor: colors.primary,
+        leftMeta: startedDateTime ? `Início: ${startedDateTime}` : `Criada: ${scheduledOrCreatedDate}`,
+        rightMeta: 'Rota ativa',
+        rightMetaColor: colors.primary,
+      };
+    }
+
+    if (normalized === 'PLANNED' || normalized === 'SCHEDULED' || normalized === 'PROGRAMADA') {
+      return {
+        badgeLabel: 'PROGRAMADA',
+        badgeStyle: styles.statusPlanned,
+        badgeTextColor: '#FBBF24',
+        leftMeta: `Escalada: ${scheduledOrCreatedDate}`,
+        rightMeta: 'Aguardando saída',
+        rightMetaColor: '#FBBF24',
+      };
+    }
+
+    if (normalized === 'CANCELLED' || normalized === 'CANCELADA') {
+      return {
+        badgeLabel: 'CANCELADA',
+        badgeStyle: styles.statusCancelled,
+        badgeTextColor: '#F87171',
+        leftMeta: startedDate ? `Saída: ${startedDate}` : `Registro: ${scheduledOrCreatedDate}`,
+        rightMeta: 'Viagem cancelada',
+        rightMetaColor: colors.textMuted,
+      };
+    }
+
+    return {
+      badgeLabel: 'CONCLUÍDA',
+      badgeStyle: styles.statusDone,
+      badgeTextColor: '#34D399',
+      leftMeta: startedDate ? `Saída: ${startedDate}` : `Registro: ${scheduledOrCreatedDate}`,
+      rightMeta: completedDate ? `Chegada: ${completedDate}` : 'Viagem concluída',
+      rightMetaColor: '#34D399',
+    };
+  };
 
   const handleRetryOffline = async (idempotencyKey: string) => {
     setRetryingId(idempotencyKey);
@@ -314,57 +389,53 @@ export function HistoryScreen({
         {activeTab === 'trips' ? (
           // LISTA DE VIAGENS
           <View style={styles.list}>
-            {trips.length > 0 ? (
-              trips.map((t) => ({
-                id: t.id,
-                origin: t.origin,
-                destination: t.destination,
-                date: t.startedAt ? new Date(t.startedAt).toLocaleDateString('pt-BR') : 'Recente',
-                vehicle: t.vehicle || '---',
-                km: 'Rota Ativa',
-                status: t.status === 'IN_PROGRESS' ? 'EM_ROTA' : 'CONCLUIDA',
-              })).map((trip) => (
-                <View key={trip.id} style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <View style={styles.plateBadge}>
-                      <Text style={styles.plateText}>{trip.vehicle}</Text>
+            {loading && trips.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.emptyDesc}>Carregando histórico de viagens...</Text>
+              </View>
+            ) : trips.length > 0 ? (
+              trips.map((t) => {
+                const meta = getTripCardPresentation(t);
+                return (
+                  <View key={t.id} style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <View style={styles.plateBadge}>
+                        <Text style={styles.plateText}>{t.vehicle || '---'}</Text>
+                      </View>
+                      <View style={[styles.statusBadge, meta.badgeStyle]}>
+                        <Text style={[styles.statusText, { color: meta.badgeTextColor }]}>
+                          {meta.badgeLabel}
+                        </Text>
+                      </View>
                     </View>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        trip.status === 'EM_ROTA' ? styles.statusInProgress : styles.statusDone,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusText,
-                          trip.status === 'EM_ROTA' ? { color: colors.primary } : { color: '#34D399' },
-                        ]}
-                      >
-                        {trip.status === 'EM_ROTA' ? 'EM ROTA' : 'CONCLUÍDA'}
+
+                    {/* ROTA */}
+                    <View style={styles.tripRoute}>
+                      <Text style={styles.routeCity} numberOfLines={1}>
+                        {t.origin}
+                      </Text>
+                      <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+                      <Text style={styles.routeCity} numberOfLines={1}>
+                        {t.destination}
+                      </Text>
+                    </View>
+
+                    <View style={styles.cardFooter}>
+                      <Text style={styles.dateText}>{meta.leftMeta}</Text>
+                      <Text style={[styles.kmText, { color: meta.rightMetaColor }]}>
+                        {meta.rightMeta}
                       </Text>
                     </View>
                   </View>
-
-                  {/* ROTA */}
-                  <View style={styles.tripRoute}>
-                    <Text style={styles.routeCity}>{trip.origin}</Text>
-                    <Ionicons name="arrow-forward" size={14} color={colors.primary} />
-                    <Text style={styles.routeCity}>{trip.destination}</Text>
-                  </View>
-
-                  <View style={styles.cardFooter}>
-                    <Text style={styles.dateText}>{trip.date}</Text>
-                    <Text style={styles.kmText}>{trip.km}</Text>
-                  </View>
-                </View>
-              ))
+                );
+              })
             ) : (
               <View style={styles.emptyCard}>
                 <Ionicons name="car-outline" size={38} color={colors.textDim} />
                 <Text style={styles.emptyTitle}>Nenhuma viagem registrada</Text>
                 <Text style={styles.emptyDesc}>
-                  Você ainda não possui viagens concluídas ou em rota no histórico.
+                  Você ainda não possui viagens concluídas, programadas ou em rota no histórico.
                 </Text>
               </View>
             )}
@@ -1274,12 +1345,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   statusInProgress: {
-    backgroundColor: 'rgba(255, 107, 0, 0.12)',
+    backgroundColor: 'rgba(255, 107, 0, 0.14)',
     borderColor: colors.primaryBorder,
+  },
+  statusPlanned: {
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
   },
   statusDone: {
     backgroundColor: 'rgba(16, 185, 129, 0.12)',
     borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  statusCancelled: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   statusText: {
     fontSize: 10,
@@ -1290,11 +1369,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
   },
   routeCity: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.textPrimary,
+    flexShrink: 1,
   },
   cardFooter: {
     flexDirection: 'row',
