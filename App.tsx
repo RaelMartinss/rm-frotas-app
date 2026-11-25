@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -27,6 +37,9 @@ export default function App() {
   const [activeTrip, setActiveTrip] = useState<any>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [historyInitialPending, setHistoryInitialPending] = useState(false);
+  const [firstAccessPass, setFirstAccessPass] = useState('');
+  const [firstAccessConfirm, setFirstAccessConfirm] = useState('');
+  const [savingFirstAccess, setSavingFirstAccess] = useState(false);
 
   useEffect(() => {
     async function restoreSession() {
@@ -86,6 +99,93 @@ export default function App() {
             deviceService.syncDeviceTelemetry(true).catch(() => {});
           }}
         />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (currentUser.mustChangePassword) {
+    const handleSaveFirstPassword = async () => {
+      if (!firstAccessPass || firstAccessPass.length < 6) {
+        Alert.alert('Atenção', 'A nova senha deve ter no mínimo 6 caracteres.');
+        return;
+      }
+      if (firstAccessPass !== firstAccessConfirm) {
+        Alert.alert('Atenção', 'A confirmação da nova senha não confere.');
+        return;
+      }
+      setSavingFirstAccess(true);
+      try {
+        await api.changeInitialPassword(firstAccessPass);
+        setFirstAccessPass('');
+        setFirstAccessConfirm('');
+        setCurrentUser({ ...currentUser, mustChangePassword: false });
+        Alert.alert('Senha Atualizada', 'Sua nova senha pessoal foi configurada com sucesso!');
+      } catch (err: any) {
+        Alert.alert('Erro', err.message || 'Não foi possível redefinir sua senha.');
+      } finally {
+        setSavingFirstAccess(false);
+      }
+    };
+
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.firstAccessSafe}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.firstAccessWrap}
+          >
+            <View style={styles.firstAccessCard}>
+              <View style={styles.firstAccessIconBox}>
+                <Ionicons name="key-outline" size={26} color={colors.primary} />
+              </View>
+              <Text style={styles.firstAccessTitle}>Defina sua Nova Senha</Text>
+              <Text style={styles.firstAccessSubtitle}>
+                Este é o seu primeiro acesso com uma senha temporária. Por segurança, crie uma senha pessoal de no mínimo 6 caracteres para continuar.
+              </Text>
+
+              <Text style={styles.firstAccessLabel}>Nova senha</Text>
+              <TextInput
+                style={styles.firstAccessInput}
+                placeholder="Mínimo 6 caracteres"
+                placeholderTextColor={colors.textDim}
+                secureTextEntry
+                value={firstAccessPass}
+                onChangeText={setFirstAccessPass}
+              />
+
+              <Text style={styles.firstAccessLabel}>Confirmar nova senha</Text>
+              <TextInput
+                style={styles.firstAccessInput}
+                placeholder="Repita a nova senha"
+                placeholderTextColor={colors.textDim}
+                secureTextEntry
+                value={firstAccessConfirm}
+                onChangeText={setFirstAccessConfirm}
+              />
+
+              <TouchableOpacity
+                style={[styles.firstAccessPrimaryBtn, savingFirstAccess && { opacity: 0.7 }]}
+                onPress={handleSaveFirstPassword}
+                disabled={savingFirstAccess}
+                activeOpacity={0.85}
+              >
+                {savingFirstAccess ? (
+                  <ActivityIndicator size="small" color="#080B0C" />
+                ) : (
+                  <Text style={styles.firstAccessPrimaryText}>Salvar e Acessar o App</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.firstAccessLogoutBtn}
+                onPress={handleLogout}
+                disabled={savingFirstAccess}
+              >
+                <Text style={styles.firstAccessLogoutText}>Sair da conta</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </SafeAreaProvider>
     );
   }
@@ -331,5 +431,84 @@ const styles = StyleSheet.create({
   },
   navIndicatorActive: {
     backgroundColor: colors.primary,
+  },
+  firstAccessSafe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  firstAccessWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  firstAccessCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 24,
+  },
+  firstAccessIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: colors.primaryMuted,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  firstAccessTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  firstAccessSubtitle: {
+    fontSize: 13,
+    color: colors.textMuted,
+    lineHeight: 19,
+    marginBottom: 20,
+  },
+  firstAccessLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  firstAccessInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    color: colors.textPrimary,
+    fontSize: 14,
+    marginBottom: 14,
+  },
+  firstAccessPrimaryBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  firstAccessPrimaryText: {
+    color: '#080B0C',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  firstAccessLogoutBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  firstAccessLogoutText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

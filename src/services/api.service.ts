@@ -21,9 +21,19 @@ const CACHE_KEYS = {
   HISTORY: 'rm_driver_history',
   FUEL_HISTORY: 'rm_driver_fuel_history',
   PENDING_FUEL_QUEUE: 'rm_pending_fuel_queue',
+  PENDING_SOS_QUEUE: 'rm_pending_sos_queue',
 };
 
+interface QueuedOfflineSos {
+  id: string;
+  protocol: string;
+  dto: ReportIncidentDTO;
+  timestamp: string;
+}
+
 class ApiService {
+  private refreshPromise: Promise<AuthResponse | null> | null = null;
+
   private async getAuthHeader(customHeaders?: Record<string, string>): Promise<HeadersInit> {
     const token = await storage.getItem('rm_token');
     return {
@@ -34,25 +44,40 @@ class ApiService {
   }
 
   /**
-   * Helper genérico para chamadas autenticadas com renovação automática de token
+   * Helper genérico para chamadas autenticadas com timeout e renovação single-flight de token
    */
   private async authenticatedFetch(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    timeoutMs = 18000
   ): Promise<Response> {
     const url = `${API_BASE_URL}${endpoint}`;
     const headers = await this.getAuthHeader(options.headers as Record<string, string>);
 
+    const fetchWithTimeout = async (reqHeaders: HeadersInit): Promise<Response> => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, {
+          ...options,
+          headers: reqHeaders,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
     try {
-      let response = await fetch(url, { ...options, headers });
+      let response = await fetchWithTimeout(headers);
       networkService.setOnline(true);
 
-      // Se retornar 401 Unauthorized, tenta renovar o token e repetir a requisição
+      // Se retornar 401 Unauthorized, aguarda renovação única (mutex) e repete a requisição
       if (response.status === 401) {
         const refreshed = await this.refresh();
         if (refreshed) {
           const retryHeaders = await this.getAuthHeader(options.headers as Record<string, string>);
-          response = await fetch(url, { ...options, headers: retryHeaders });
+          response = await fetchWithTimeout(retryHeaders);
         }
       }
 
@@ -96,30 +121,43 @@ class ApiService {
   }
 
   async refresh(): Promise<AuthResponse | null> {
-    const refreshToken = await storage.getItem('rm_refresh_token');
-    if (!refreshToken) return null;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      if (!response.ok) return null;
-      const data: AuthResponse = await response.json();
-      await storage.setItem('rm_token', data.accessToken);
-      if (data.refreshToken) {
-        await storage.setItem('rm_refresh_token', data.refreshToken);
-      }
-      if (data.user) {
-        await storage.setItem('rm_user', JSON.stringify(data.user));
-        await storage.setItem('rm_last_user', JSON.stringify(data.user));
-      }
-      return data;
-    } catch {
-      return null;
+    if (this.refreshPromise) {
+      return this.refreshPromise;
     }
+
+    this.refreshPromise = (async () => {
+      const refreshToken = await storage.getItem('rm_refresh_token');
+      if (!refreshToken) return null;
+
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timer));
+
+        if (!response.ok) return null;
+        const data: AuthResponse = await response.json();
+        await storage.setItem('rm_token', data.accessToken);
+        if (data.refreshToken) {
+          await storage.setItem('rm_refresh_token', data.refreshToken);
+        }
+        if (data.user) {
+          await storage.setItem('rm_user', JSON.stringify(data.user));
+          await storage.setItem('rm_last_user', JSON.stringify(data.user));
+        }
+        return data;
+      } catch {
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
   }
 
   async loginWithBiometrics(): Promise<User | null> {
@@ -214,11 +252,15 @@ class ApiService {
    * Inicia a viagem com 1 toque no celular
    */
   async startTrip(
-    tripId: string
+    tripId: string,
+    initialKm?: number
   ): Promise<{ message: string; tripId: string; status: string; startedAt?: string }> {
     const res = await this.authenticatedFetch('/driver-portal/start-trip', {
       method: 'POST',
-      body: JSON.stringify({ tripId }),
+      body: JSON.stringify({
+        tripId,
+        ...(initialKm !== undefined && !isNaN(initialKm) ? { initialKm } : {}),
+      }),
     });
 
     if (!res.ok) {
@@ -321,7 +363,9 @@ class ApiService {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || 'Falha ao registrar localização.');
+      const error = new Error(err.message || 'Falha ao registrar localização.');
+      (error as any).status = res.status;
+      throw error;
     }
 
     return res.json();
@@ -541,15 +585,45 @@ class ApiService {
   }
 
   /**
-   * Retorna a quantidade de itens na fila offline aguardando sincronização
+   * Retorna a quantidade total de itens na fila offline (abastecimentos + SOS) aguardando sincronização
    */
   async getOfflineQueueCount(): Promise<number> {
     try {
-      const queue = await this.getOfflineFuelQueue();
-      return queue.length;
+      const [fuelQueue, sosQueue] = await Promise.all([
+        this.getOfflineFuelQueue(),
+        this.getOfflineSosQueue(),
+      ]);
+      return fuelQueue.length + sosQueue.length;
     } catch {
       return 0;
     }
+  }
+
+  /**
+   * Obtém a lista de chamados SOS pendentes na fila offline
+   */
+  async getOfflineSosQueue(): Promise<QueuedOfflineSos[]> {
+    try {
+      const raw = await storage.getItem(CACHE_KEYS.PENDING_SOS_QUEUE);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async enqueueOfflineSos(dto: ReportIncidentDTO, protocol: string): Promise<void> {
+    try {
+      const queue = await this.getOfflineSosQueue();
+      queue.push({
+        id: `sos_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        protocol,
+        dto,
+        timestamp: new Date().toISOString(),
+      });
+      await storage.setItem(CACHE_KEYS.PENDING_SOS_QUEUE, JSON.stringify(queue));
+    } catch {}
   }
 
   /**
@@ -619,25 +693,33 @@ class ApiService {
   }
 
   /**
-   * Sincroniza pendências salvas offline com o servidor
+   * Sincroniza pendências salvas offline (abastecimentos + alertas SOS) com o servidor
    */
   async syncOfflineQueue(): Promise<{ synced: number; failed: number }> {
     try {
-      const queue = await this.getOfflineFuelQueue();
-      if (queue.length === 0) return { synced: 0, failed: 0 };
+      const [fuelQueue, sosQueue] = await Promise.all([
+        this.getOfflineFuelQueue(),
+        this.getOfflineSosQueue(),
+      ]);
+      if (fuelQueue.length === 0 && sosQueue.length === 0) return { synced: 0, failed: 0 };
 
       let synced = 0;
       let failed = 0;
-      const remaining: QueuedOfflineFuel[] = [];
+      const remainingFuel: QueuedOfflineFuel[] = [];
+      const remainingSos: QueuedOfflineSos[] = [];
 
-      for (const item of queue) {
+      for (const item of fuelQueue) {
         try {
           const { vehiclePlate, vehicleModel, ...payloadForApi } = item.dto;
-          const res = await this.authenticatedFetch('/driver-portal/fuel-record', {
-            method: 'POST',
-            headers: { 'Idempotency-Key': item.idempotencyKey },
-            body: JSON.stringify(payloadForApi),
-          });
+          const res = await this.authenticatedFetch(
+            '/driver-portal/fuel-record',
+            {
+              method: 'POST',
+              headers: { 'Idempotency-Key': item.idempotencyKey },
+              body: JSON.stringify(payloadForApi),
+            },
+            30000
+          );
 
           if (res.ok) {
             synced++;
@@ -645,16 +727,45 @@ class ApiService {
             const err = await res.json().catch(() => ({}));
             item.status = 'DEAD';
             item.error = err.message || 'Falha ao sincronizar registro.';
-            remaining.push(item);
+            remainingFuel.push(item);
             failed++;
           }
         } catch {
-          remaining.push(item);
+          remainingFuel.push(item);
           failed++;
         }
       }
 
-      await storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(remaining));
+      for (const sosItem of sosQueue) {
+        try {
+          const res = await this.authenticatedFetch(
+            '/driver-portal/incident',
+            {
+              method: 'POST',
+              body: JSON.stringify(sosItem.dto),
+            },
+            30000
+          );
+
+          if (res.ok) {
+            synced++;
+          } else if (res.status >= 400 && res.status < 500) {
+            // Erro definitivo de validação: descarta para não travar fila infinita
+            failed++;
+          } else {
+            remainingSos.push(sosItem);
+            failed++;
+          }
+        } catch {
+          remainingSos.push(sosItem);
+          failed++;
+        }
+      }
+
+      await Promise.all([
+        storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(remainingFuel)),
+        storage.setItem(CACHE_KEYS.PENDING_SOS_QUEUE, JSON.stringify(remainingSos)),
+      ]);
       return { synced, failed };
     } catch {
       return { synced: 0, failed: 0 };
@@ -662,14 +773,34 @@ class ApiService {
   }
 
   /**
-   * Reporta um incidente operacional / SOS de socorro imediato
+   * Reporta um incidente operacional / SOS de socorro imediato com fila offline real
    */
   async reportIncident(dto: ReportIncidentDTO): Promise<ReportIncidentResult> {
+    if (!networkService.isOnline) {
+      const offlineProtocol = `#OFF-${Math.floor(100000 + Math.random() * 900000)}`;
+      await this.enqueueOfflineSos(dto, offlineProtocol);
+      return {
+        message: 'Alerta gravado na fila offline do dispositivo. Será transmitido automaticamente à central assim que houver sinal.',
+        incidentId: 'offline-' + Date.now(),
+        protocol: offlineProtocol,
+        category: dto.category,
+        description: dto.description || 'Alerta emitido em modo offline',
+        recordedAt: new Date().toISOString(),
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        locationAddress: dto.locationAddress,
+      };
+    }
+
     try {
-      const res = await this.authenticatedFetch('/driver-portal/incident', {
-        method: 'POST',
-        body: JSON.stringify(dto),
-      });
+      const res = await this.authenticatedFetch(
+        '/driver-portal/incident',
+        {
+          method: 'POST',
+          body: JSON.stringify(dto),
+        },
+        30000
+      );
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -678,16 +809,19 @@ class ApiService {
 
       return res.json();
     } catch (err: any) {
-      // Se for falha de conexão na estrada, gera protocolo offline local
+      // Se for falha de conexão na estrada, persiste na fila offline real
       const isNetworkError =
+        !networkService.isOnline ||
+        err.name === 'AbortError' ||
         err.message?.includes('Network') ||
         err.message?.includes('Failed to fetch') ||
         err.message?.includes('Abort');
 
       if (isNetworkError) {
         const offlineProtocol = `#OFF-${Math.floor(100000 + Math.random() * 900000)}`;
+        await this.enqueueOfflineSos(dto, offlineProtocol);
         return {
-          message: 'Alerta gravado localmente (Offline). Será sincronizado com a central assim que houver sinal.',
+          message: 'Alerta gravado na fila offline do dispositivo. Será transmitido automaticamente à central assim que houver sinal.',
           incidentId: 'offline-' + Date.now(),
           protocol: offlineProtocol,
           category: dto.category,
@@ -704,6 +838,46 @@ class ApiService {
   }
 
   /**
+   * Altera a senha temporária no primeiro acesso e rotaciona os tokens JWT
+   */
+  async changeInitialPassword(
+    newPassword: string,
+    currentPassword?: string
+  ): Promise<{ message: string }> {
+    const res = await this.authenticatedFetch('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(currentPassword ? { currentPassword } : {}),
+        newPassword,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Falha ao redefinir a senha temporária.');
+    }
+
+    const data = await res.json();
+    if (data.accessToken) {
+      await storage.setItem('rm_token', data.accessToken);
+    }
+    if (data.refreshToken) {
+      await storage.setItem('rm_refresh_token', data.refreshToken);
+    }
+
+    try {
+      const user = await this.getStoredUser();
+      if (user) {
+        user.mustChangePassword = false;
+        await storage.setItem('rm_user', JSON.stringify(user));
+        await storage.setItem('rm_last_user', JSON.stringify(user));
+      }
+    } catch {}
+
+    return { message: data.message || 'Senha definida com sucesso!' };
+  }
+
+  /**
    * Altera a senha do usuário autenticado
    */
   async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
@@ -717,7 +891,16 @@ class ApiService {
       throw new Error(err.message || 'Falha ao alterar senha.');
     }
 
-    return res.json();
+    const data = await res.json();
+    try {
+      const user = await this.getStoredUser();
+      if (user) {
+        user.mustChangePassword = false;
+        await storage.setItem('rm_user', JSON.stringify(user));
+        await storage.setItem('rm_last_user', JSON.stringify(user));
+      }
+    } catch {}
+    return data;
   }
 
   /**

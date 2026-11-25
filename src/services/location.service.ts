@@ -39,8 +39,8 @@ function shouldSendLocation(
   loc: Location.LocationObject,
   lastPing: { lat: number; lng: number; time: number; heading: number | null } | null
 ): boolean {
-  // Filtro 1: Descarta leituras com acurácia ruim (> 35 metros)
-  if (loc.coords.accuracy !== null && loc.coords.accuracy !== undefined && loc.coords.accuracy > 35) {
+  // Filtro 1: Descarta leituras com acurácia ruim (> 25 metros, alinhado ao contrato da API)
+  if (loc.coords.accuracy !== null && loc.coords.accuracy !== undefined && loc.coords.accuracy > 25) {
     return false;
   }
 
@@ -151,9 +151,18 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
           // Remove da fila os pings transmitidos
           const remaining = queue.filter((q) => q.tripId !== activeTripId);
           await storage.setItem(STORAGE_OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
-        } catch {
-          // Se falhar o envio por falta de sinal na rodovia, enfileira localmente
-          await locationService.enqueuePings(activeTripId, validPings);
+        } catch (sendErr: any) {
+          const status = sendErr?.status;
+          // Se a viagem já foi encerrada ou acesso negado (400/403/404), descarta pings obsoletos e encerra task
+          if (status === 400 || status === 403 || status === 404) {
+            const rawQueue = await storage.getItem(STORAGE_OFFLINE_QUEUE_KEY);
+            const queue: { tripId: string; ping: LocationPingDTO }[] = rawQueue ? JSON.parse(rawQueue) : [];
+            const remaining = queue.filter((q) => q.tripId !== activeTripId);
+            await storage.setItem(STORAGE_OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
+          } else {
+            // Se falhar o envio por falta de sinal na rodovia, enfileira localmente
+            await locationService.enqueuePings(activeTripId, validPings);
+          }
         }
       }
     } catch (e: any) {
@@ -310,8 +319,11 @@ class LocationService {
 
             try {
               await api.sendLocationPings(tripId, [ping]);
-            } catch {
-              await this.enqueuePings(tripId, [ping]);
+            } catch (sendErr: any) {
+              const status = sendErr?.status;
+              if (status !== 400 && status !== 403 && status !== 404) {
+                await this.enqueuePings(tripId, [ping]);
+              }
             }
           }
         );
@@ -409,9 +421,12 @@ class LocationService {
         const pings = byTrip[tripId];
         try {
           await api.sendLocationPings(tripId, pings);
-        } catch {
-          // Se falhar o envio para este tripId, mantém na fila
-          pings.forEach((p) => remainingQueue.push({ tripId, ping: p }));
+        } catch (sendErr: any) {
+          const status = sendErr?.status;
+          // Mantém na fila apenas se for erro transitório de rede ou servidor (5xx)
+          if (status !== 400 && status !== 403 && status !== 404) {
+            pings.forEach((p) => remainingQueue.push({ tripId, ping: p }));
+          }
         }
       }
 

@@ -37,21 +37,20 @@ class NetworkService {
   }
 
   /**
-   * Verifica se a conexão com a internet está ativa realizando ping leve
+   * Verifica se a conexão com a API da RM Frotas está ativa realizando healthcheck leve
    */
   async checkConnection(): Promise<boolean> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      // Endpoint ultraleve de 204 No Content
-      const response = await fetch('https://clients3.google.com/generate_204', {
-        method: 'HEAD',
+      const response = await fetch('https://api.rmfrotas.com.br/v1/health', {
+        method: 'GET',
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
-      const online = response.status === 204 || response.ok;
+      const online = response.ok;
       this.setOnline(online);
       return online;
     } catch {

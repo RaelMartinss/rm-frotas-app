@@ -82,6 +82,7 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
   const [selectedCategory, setSelectedCategory] = useState<IncidentCategory>('MECANICA');
   const [description, setDescription] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Coordenadas de GPS em tempo real
@@ -126,10 +127,13 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
         mediaTypes: ['images'],
         allowsEditing: true,
         quality: 0.6,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setPhotoUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setPhotoUri(asset.uri);
+        setPhotoBase64(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null);
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível acessar a câmera do dispositivo.');
@@ -138,6 +142,7 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
 
   const removePhoto = () => {
     setPhotoUri(null);
+    setPhotoBase64(null);
   };
 
   const handleSubmit = async () => {
@@ -149,7 +154,7 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
         description: description.trim() || undefined,
         latitude: coords?.latitude,
         longitude: coords?.longitude,
-        photoUrl: photoUri || undefined,
+        photoUrl: photoBase64 || undefined,
         tripId: activeTrip?.id,
         vehicleId: activeTrip?.vehicle?.id,
       });

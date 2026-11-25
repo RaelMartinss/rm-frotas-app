@@ -65,6 +65,20 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
       return;
     }
 
+    const parsedInitialKm = parseInt(initialKm.replace(/\D/g, ''), 10);
+    if (isNaN(parsedInitialKm) || parsedInitialKm < 0) {
+      Alert.alert('Odômetro Inválido', 'Informe um valor numérico válido para o odômetro inicial.');
+      return;
+    }
+
+    if (currentVehicle?.currentKm != null && parsedInitialKm < currentVehicle.currentKm) {
+      Alert.alert(
+        'Odômetro Menor que o Atual',
+        `O odômetro inicial (${parsedInitialKm.toLocaleString('pt-BR')} km) não pode ser inferior ao odômetro atual registrado no veículo (${Number(currentVehicle.currentKm).toLocaleString('pt-BR')} km).`
+      );
+      return;
+    }
+
     const allChecked = Object.values(checklist).every(Boolean);
     if (!allChecked) {
       Alert.alert('Checklist Pendente', 'Certifique-se de que todos os itens de inspeção diária foram checados.');
@@ -76,10 +90,10 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
       const effectiveTripId = tripId || currentTrip?.id || '';
       let startedAtIso = new Date().toISOString();
 
-      // 1. Salvar checklist e iniciar viagem na API
+      // 1. Salvar checklist e iniciar viagem na API informando o odômetro inicial
       if (effectiveTripId) {
         await api.saveChecklist(effectiveTripId, checklist).catch(() => {});
-        const startRes = await api.startTrip(effectiveTripId);
+        const startRes = await api.startTrip(effectiveTripId, parsedInitialKm);
         if (startRes?.startedAt) {
           startedAtIso = startRes.startedAt;
         }

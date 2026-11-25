@@ -255,6 +255,30 @@ export function HomeScreen({
       setFinalKm(currentKmVal != null ? String(currentKmVal) : '');
       setCompleteModalOpen(true);
     } else {
+      if (summary?.driver?.status && summary.driver.status !== 'ACTIVE') {
+        Alert.alert(
+          'Início Bloqueado',
+          'Seu cadastro de condutor está suspenso ou inativo no momento. Procure o gestor da frota.'
+        );
+        return;
+      }
+      if (summary?.driver?.canStartTrip === false || isCnhExpired) {
+        Alert.alert(
+          'Habilitação Pendente',
+          'Não é possível iniciar novas viagens com a CNH vencida ou prestes a vencer em menos de 24h.'
+        );
+        return;
+      }
+      if (
+        activeTrip?.vehicle?.status === 'IN_MAINTENANCE' ||
+        activeTrip?.vehicle?.status === 'MAINTENANCE'
+      ) {
+        Alert.alert(
+          'Veículo em Manutenção',
+          'O veículo vinculado a esta escala encontra-se em manutenção na oficina e não pode iniciar rota.'
+        );
+        return;
+      }
       onNavigateToTrip();
     }
   };
@@ -418,8 +442,8 @@ export function HomeScreen({
               <View style={{ flex: 1 }}>
                 <Text style={styles.queueTitle}>
                   {offlineQueueCount === 1
-                    ? '1 abastecimento pendente na fila'
-                    : `${offlineQueueCount} abastecimentos pendentes na fila`}
+                    ? '1 registro operacional pendente na fila'
+                    : `${offlineQueueCount} registros operacionais pendentes na fila`}
                 </Text>
                 <Text style={styles.queueSubtitle}>
                   {isOnline
@@ -942,7 +966,8 @@ export function HomeScreen({
                         {(() => {
                           const rawStatus =
                             activeTrip?.vehicle?.status || summary?.trip?.vehicle?.status;
-                          const isMaint = rawStatus === 'MAINTENANCE';
+                          const isMaint =
+                            rawStatus === 'IN_MAINTENANCE' || rawStatus === 'MAINTENANCE';
                           const statusLabel =
                             rawStatus === 'AVAILABLE'
                               ? 'Disponível'

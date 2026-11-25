@@ -369,7 +369,12 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
                 <TouchableOpacity
                   key={item.id}
                   style={[styles.fuelTypePill, active && styles.fuelTypePillActive]}
-                  onPress={() => setFuelType(item.id as FuelType)}
+                  onPress={() => {
+                    setFuelType(item.id as FuelType);
+                    if (item.id === 'ARLA_32') {
+                      setFullTank(false);
+                    }
+                  }}
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.fuelTypePillText, active && styles.fuelTypePillTextActive]}>

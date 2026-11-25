@@ -84,10 +84,10 @@ jobs:
           files: release-assets/rm-frotas.apk
           body: |
             ✨ **Novidades e Correções da Versão:**
-            • Remoção completa de dados e fallbacks mockados em Abastecimento, Checklist, Perfil, Documentos e Login
-            • Validação real de vínculo de veículo/viagem, permissões de GPS e limpeza integral de cache no logout
-            • Canal oficial de suporte atualizado para contato@rmfrotas.com.br e persistência real de preferências
-            • Correção dos status e datas reais das viagens no Histórico Operacional
+            • Armazenamento local migrado para expo-file-system (suporte completo a fotos e filas offline sem limite de 2 KB)
+            • SOS Operacional com envio de foto em Base64 e fila real de sincronização offline automática
+            • Suporte completo ao lançamento de Arla 32, envio do odômetro inicial de saída e troca de senha no primeiro acesso
+            • Proteção contra conflito de renovação de sessão (token refresh) e melhorias no rastreamento GPS
           generate_release_notes: false
           draft: false
           prerelease: false
