@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { ChecklistItem, TripChecklistDTO } from '../types/driver';
 
 interface ChecklistScreenProps {
@@ -127,6 +128,7 @@ export function ChecklistScreen({ onBack, onSuccess, activeTrip }: ChecklistScre
 
   const [generalNotes, setGeneralNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const keyboardHeight = useKeyboardOffset();
 
   const setItemStatus = (id: string, status: 'OK' | 'DEFECT' | 'NOT_APPLICABLE') => {
     setItems((prev) => ({
@@ -279,7 +281,10 @@ export function ChecklistScreen({ onBack, onSuccess, activeTrip }: ChecklistScre
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 40 },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

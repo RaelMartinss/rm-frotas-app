@@ -26,6 +26,7 @@ import { appUpdateService, UpdateInfo, UpdateDownloadState } from '../services/a
 import { navigationService } from '../services/navigation.service';
 import { notificationService } from '../services/notification.service';
 import { NotificationCenterModal } from './NotificationCenterModal';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { User } from '../types/auth';
 import { DriverPortalSummary, DriverCurrentTrip } from '../types/driver';
 
@@ -72,6 +73,7 @@ export function HomeScreen({
   const [syncingQueue, setSyncingQueue] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [driverPhoto, setDriverPhoto] = useState<string | null>(user.photoUrl || null);
+  const keyboardHeight = useKeyboardOffset();
   const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
     isDownloading: false,
     progress: 0,
@@ -1088,7 +1090,12 @@ export function HomeScreen({
         animationType="fade"
         onRequestClose={() => setCompleteModalOpen(false)}
       >
-        <View style={styles.completeModalBackdrop}>
+        <View
+          style={[
+            styles.completeModalBackdrop,
+            keyboardHeight > 0 && { paddingBottom: keyboardHeight * 0.6 + 16 },
+          ]}
+        >
           <View style={styles.completeModalCard}>
             {/* Cabeçalho */}
             <View style={styles.completeModalHeader}>

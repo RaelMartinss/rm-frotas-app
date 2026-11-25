@@ -84,10 +84,10 @@ jobs:
           files: release-assets/rm-frotas.apk
           body: |
             ✨ **Novidades e Correções da Versão:**
-            • Armazenamento local migrado para expo-file-system (suporte completo a fotos e filas offline sem limite de 2 KB)
-            • SOS Operacional com envio de foto em Base64 e fila real de sincronização offline automática
-            • Suporte completo ao lançamento de Arla 32, envio do odômetro inicial de saída e troca de senha no primeiro acesso
-            • Proteção contra conflito de renovação de sessão (token refresh) e melhorias no rastreamento GPS
+            • Correção do teclado sobrepondo o campo de senha na tela de Login (auto-scroll, topo compacto e salto rápido entre campos)
+            • Ajuste de visibilidade dos campos com teclado aberto nos modais de perfil, finalização de viagem e formulários operacionais
+            • Rótulo de acesso rápido no Android atualizado para Biometria/Digital
+            • Melhorias gerais de usabilidade e estabilidade no Android 15+ Edge-to-Edge
           generate_release_notes: false
           draft: false
           prerelease: false

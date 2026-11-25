@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
 import { networkService } from '../services/network.service';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { DriverFuelDTO } from '../types/driver';
 
 interface FuelScreenProps {
@@ -42,6 +43,7 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
   const [receiptBase64, setReceiptBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [isOnline, setIsOnline] = useState(networkService.isOnline);
+  const keyboardHeight = useKeyboardOffset();
 
   // Monitora alterações na conectividade da rede em tempo real
   useEffect(() => {
@@ -273,7 +275,13 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 40 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* BANNER MODO OFFLINE */}
         {!isOnline && (
           <View style={styles.offlineBanner}>

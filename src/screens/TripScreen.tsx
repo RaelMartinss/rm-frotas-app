@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 
 interface TripScreenProps {
   onBack: () => void;
@@ -46,6 +47,7 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
     currentVehicle?.currentKm != null ? currentVehicle.currentKm.toString() : ''
   );
   const [starting, setStarting] = useState(false);
+  const keyboardHeight = useKeyboardOffset();
 
   // Checklist rápido
   const [checklist, setChecklist] = useState({
@@ -182,7 +184,13 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 40 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* SELEÇÃO DO VEÍCULO */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionLabel}>VEÍCULO DESIGNADO</Text>

@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
 import { locationService } from '../services/location.service';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { IncidentCategory } from '../types/driver';
 
 interface SOSScreenProps {
@@ -84,6 +85,7 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const keyboardHeight = useKeyboardOffset();
 
   // Coordenadas de GPS em tempo real
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -201,7 +203,10 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 40 },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

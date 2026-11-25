@@ -8,10 +8,12 @@ import {
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
+  ScrollView,
   Platform,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useKeyboardOffset } from './src/hooks/useKeyboardOffset';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { FuelScreen } from './src/screens/FuelScreen';
@@ -40,6 +42,7 @@ export default function App() {
   const [firstAccessPass, setFirstAccessPass] = useState('');
   const [firstAccessConfirm, setFirstAccessConfirm] = useState('');
   const [savingFirstAccess, setSavingFirstAccess] = useState(false);
+  const keyboardHeight = useKeyboardOffset();
 
   useEffect(() => {
     async function restoreSession() {
@@ -132,58 +135,73 @@ export default function App() {
         <SafeAreaView style={styles.firstAccessSafe}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.firstAccessWrap}
+            style={{ flex: 1 }}
           >
-            <View style={styles.firstAccessCard}>
-              <View style={styles.firstAccessIconBox}>
-                <Ionicons name="key-outline" size={26} color={colors.primary} />
+            <ScrollView
+              contentContainerStyle={[
+                styles.firstAccessWrap,
+                keyboardHeight > 0 && {
+                  justifyContent: 'flex-start',
+                  paddingTop: 20,
+                  paddingBottom: Platform.OS === 'android' ? keyboardHeight + 32 : 24,
+                },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.firstAccessCard}>
+                <View style={styles.firstAccessIconBox}>
+                  <Ionicons name="key-outline" size={26} color={colors.primary} />
+                </View>
+                <Text style={styles.firstAccessTitle}>Defina sua Nova Senha</Text>
+                <Text style={styles.firstAccessSubtitle}>
+                  Este é o seu primeiro acesso com uma senha temporária. Por segurança, crie uma senha pessoal de no mínimo 6 caracteres para continuar.
+                </Text>
+
+                <Text style={styles.firstAccessLabel}>Nova senha</Text>
+                <TextInput
+                  style={styles.firstAccessInput}
+                  placeholder="Mínimo 6 caracteres"
+                  placeholderTextColor={colors.textDim}
+                  secureTextEntry
+                  value={firstAccessPass}
+                  onChangeText={setFirstAccessPass}
+                />
+
+                <Text style={styles.firstAccessLabel}>Confirmar nova senha</Text>
+                <TextInput
+                  style={styles.firstAccessInput}
+                  placeholder="Repita a nova senha"
+                  placeholderTextColor={colors.textDim}
+                  secureTextEntry
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveFirstPassword}
+                  value={firstAccessConfirm}
+                  onChangeText={setFirstAccessConfirm}
+                />
+
+                <TouchableOpacity
+                  style={[styles.firstAccessPrimaryBtn, savingFirstAccess && { opacity: 0.7 }]}
+                  onPress={handleSaveFirstPassword}
+                  disabled={savingFirstAccess}
+                  activeOpacity={0.85}
+                >
+                  {savingFirstAccess ? (
+                    <ActivityIndicator size="small" color="#080B0C" />
+                  ) : (
+                    <Text style={styles.firstAccessPrimaryText}>Salvar e Acessar o App</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.firstAccessLogoutBtn}
+                  onPress={handleLogout}
+                  disabled={savingFirstAccess}
+                >
+                  <Text style={styles.firstAccessLogoutText}>Sair da conta</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.firstAccessTitle}>Defina sua Nova Senha</Text>
-              <Text style={styles.firstAccessSubtitle}>
-                Este é o seu primeiro acesso com uma senha temporária. Por segurança, crie uma senha pessoal de no mínimo 6 caracteres para continuar.
-              </Text>
-
-              <Text style={styles.firstAccessLabel}>Nova senha</Text>
-              <TextInput
-                style={styles.firstAccessInput}
-                placeholder="Mínimo 6 caracteres"
-                placeholderTextColor={colors.textDim}
-                secureTextEntry
-                value={firstAccessPass}
-                onChangeText={setFirstAccessPass}
-              />
-
-              <Text style={styles.firstAccessLabel}>Confirmar nova senha</Text>
-              <TextInput
-                style={styles.firstAccessInput}
-                placeholder="Repita a nova senha"
-                placeholderTextColor={colors.textDim}
-                secureTextEntry
-                value={firstAccessConfirm}
-                onChangeText={setFirstAccessConfirm}
-              />
-
-              <TouchableOpacity
-                style={[styles.firstAccessPrimaryBtn, savingFirstAccess && { opacity: 0.7 }]}
-                onPress={handleSaveFirstPassword}
-                disabled={savingFirstAccess}
-                activeOpacity={0.85}
-              >
-                {savingFirstAccess ? (
-                  <ActivityIndicator size="small" color="#080B0C" />
-                ) : (
-                  <Text style={styles.firstAccessPrimaryText}>Salvar e Acessar o App</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.firstAccessLogoutBtn}
-                onPress={handleLogout}
-                disabled={savingFirstAccess}
-              >
-                <Text style={styles.firstAccessLogoutText}>Sair da conta</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </SafeAreaProvider>
@@ -437,9 +455,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   firstAccessWrap: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
+    paddingVertical: 24,
   },
   firstAccessCard: {
     backgroundColor: colors.surface,

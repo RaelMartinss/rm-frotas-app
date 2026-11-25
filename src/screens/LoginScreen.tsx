@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
 import { biometricService, BiometricType } from '../services/biometric.service';
 import { CURRENT_APP_VERSION } from '../services/app-update.service';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { User } from '../types/auth';
 
 interface LoginScreenProps {
@@ -34,6 +35,27 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState<BiometricType>('none');
   const [lastUser, setLastUser] = useState<User | null>(null);
+
+  // Controle de teclado e rolagem automática dos campos
+  const keyboardHeight = useKeyboardOffset();
+  const isKeyboardOpen = keyboardHeight > 0;
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (!isKeyboardOpen || !focusedField) return;
+
+    const timer = setTimeout(() => {
+      if (focusedField === 'password') {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      } else if (focusedField === 'email') {
+        scrollViewRef.current?.scrollTo({ y: lastUser && biometricAvailable ? 130 : 60, animated: true });
+      }
+    }, 60);
+
+    return () => clearTimeout(timer);
+  }, [isKeyboardOpen, keyboardHeight, focusedField, lastUser, biometricAvailable]);
 
   useEffect(() => {
     async function checkBiometrics() {
@@ -114,7 +136,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   const biometricTitle =
-    biometricType === 'facial' ? 'Face ID' : 'Digital';
+    biometricType === 'facial'
+      ? Platform.OS === 'ios'
+        ? 'Face ID'
+        : 'Biometria'
+      : 'Digital';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -124,18 +150,33 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         style={styles.container}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          ref={scrollViewRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isKeyboardOpen && {
+              justifyContent: 'flex-start',
+              paddingTop: 12,
+              paddingBottom: Platform.OS === 'android' ? keyboardHeight + 36 : 32,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* HEADER / LOGO */}
-          <View style={styles.header}>
-            <View style={styles.logoBadge}>
-              <Text style={styles.logoBadgeText}>RM</Text>
+          {/* HEADER / LOGO (compacta suavemente quando o teclado abre para liberar espaço) */}
+          <View style={[styles.header, isKeyboardOpen && styles.headerCompact]}>
+            <View style={[styles.logoBadge, isKeyboardOpen && styles.logoBadgeCompact]}>
+              <Text style={[styles.logoBadgeText, isKeyboardOpen && styles.logoBadgeTextCompact]}>
+                RM
+              </Text>
             </View>
-            <Text style={styles.headerTitle}>
-              RM <Text style={{ color: colors.primary }}>FROTAS</Text>
-            </Text>
-            <Text style={styles.headerSubtitle}>PORTAL OPERACIONAL</Text>
+            <View style={isKeyboardOpen ? { marginLeft: 10 } : { alignItems: 'center' }}>
+              <Text style={[styles.headerTitle, isKeyboardOpen && styles.headerTitleCompact]}>
+                RM <Text style={{ color: colors.primary }}>FROTAS</Text>
+              </Text>
+              {!isKeyboardOpen && (
+                <Text style={styles.headerSubtitle}>PORTAL OPERACIONAL</Text>
+              )}
+            </View>
           </View>
 
           {/* CARD DE LOGIN CENTRALIZADO */}
@@ -201,6 +242,12 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 placeholderTextColor={colors.textDim}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onFocus={() => setFocusedField('email')}
+                onBlur={() => setFocusedField((prev) => (prev === 'email' ? null : prev))}
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
                 value={email}
                 onChangeText={setEmail}
               />
@@ -210,10 +257,15 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               <Text style={styles.label}>Senha</Text>
               <View style={styles.passwordContainer}>
                 <TextInput
+                  ref={passwordInputRef}
                   style={[styles.input, styles.passwordInput]}
                   placeholder="••••••••••••"
                   placeholderTextColor={colors.textDim}
                   secureTextEntry={!showPassword}
+                  returnKeyType="go"
+                  onFocus={() => setFocusedField('password')}
+                  onBlur={() => setFocusedField((prev) => (prev === 'password' ? null : prev))}
+                  onSubmitEditing={handleLogin}
                   value={password}
                   onChangeText={setPassword}
                 />
@@ -259,14 +311,16 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </View>
 
           {/* RODAPÉ */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              RM FROTAS • SUA FROTA, MAIS EFICIENTE
-            </Text>
-            <Text style={styles.footerVersion}>
-              Versão {CURRENT_APP_VERSION} {biometricAvailable ? '• Biometria Ativa' : ''}
-            </Text>
-          </View>
+          {!isKeyboardOpen && (
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>
+                RM FROTAS • SUA FROTA, MAIS EFICIENTE
+              </Text>
+              <Text style={styles.footerVersion}>
+                Versão {CURRENT_APP_VERSION} {biometricAvailable ? '• Biometria Ativa' : ''}
+              </Text>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -291,6 +345,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 28,
   },
+  headerCompact: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
   logoBadge: {
     width: 52,
     height: 52,
@@ -305,17 +365,30 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
+  logoBadgeCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    marginBottom: 0,
+  },
   logoBadgeText: {
     color: '#080B0C',
     fontWeight: '900',
     fontSize: 20,
     letterSpacing: 1,
   },
+  logoBadgeTextCompact: {
+    fontSize: 14,
+  },
   headerTitle: {
     fontSize: 22,
     fontWeight: '900',
     color: colors.textPrimary,
     letterSpacing: 3,
+  },
+  headerTitleCompact: {
+    fontSize: 17,
+    letterSpacing: 2,
   },
   headerSubtitle: {
     fontSize: 11,

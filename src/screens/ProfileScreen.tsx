@@ -24,6 +24,7 @@ import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
 import { storage } from '../services/storage.service';
 import { appUpdateService, CURRENT_APP_VERSION, UpdateDownloadState } from '../services/app-update.service';
+import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { User } from '../types/auth';
 import { DriverPortalSummary } from '../types/driver';
 
@@ -108,6 +109,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
   const [termsModalOpen, setTermsModalOpen] = useState(false);
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
+  const keyboardHeight = useKeyboardOffset();
 
   // Download do Atualizador In-App
   const [downloadState, setDownloadState] = useState<UpdateDownloadState>({
@@ -1004,7 +1006,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
         animationType="slide"
         onRequestClose={() => setEditProfileModalOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View
+          style={[
+            styles.modalOverlay,
+            keyboardHeight > 0 && { paddingBottom: keyboardHeight + 16 },
+          ]}
+        >
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderTitleRow}>
@@ -1084,7 +1091,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
         animationType="slide"
         onRequestClose={() => setPasswordModalOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View
+          style={[
+            styles.modalOverlay,
+            keyboardHeight > 0 && { paddingBottom: keyboardHeight + 16 },
+          ]}
+        >
           <View style={styles.modalContentCard}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderTitleRow}>
