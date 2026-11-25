@@ -223,15 +223,11 @@ export function HomeScreen({
     }
   };
 
-  const formatTripDateTime = (dateStr?: string | null, fallbackHours = 0) => {
+  const formatTripDateTime = (dateStr?: string | null) => {
     if (!dateStr) return '--:--';
     try {
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return dateStr;
-
-      if (fallbackHours > 0) {
-        d.setHours(d.getHours() + fallbackHours);
-      }
 
       const now = new Date();
       const isToday =
@@ -297,17 +293,13 @@ export function HomeScreen({
   };
 
   const handleSOS = () => {
+    if (onNavigateToSOS) {
+      onNavigateToSOS();
+      return;
+    }
     Alert.alert(
-      '🚨 SOS Alerta Operacional',
-      'Deseja enviar um chamado de socorro prioritário para a central da RM Frotas?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Enviar SOS',
-          style: 'destructive',
-          onPress: () => Alert.alert('Alerta Enviado', 'A central de monitoramento recebeu sua localização.'),
-        },
-      ]
+      'Suporte Operacional',
+      'Não foi possível abrir o módulo SOS. Entre em contato com a central pelo e-mail contato@rmfrotas.com.br.'
     );
   };
 
@@ -345,7 +337,7 @@ export function HomeScreen({
           )}
           <View style={styles.driverInfoCol}>
             <Text style={styles.driverName} numberOfLines={1}>
-              {user.name || 'Rael Martins'}
+              {summary?.driver?.name || user.name || 'Motorista'}
             </Text>
             <Text style={styles.driverSubtitle}>Motorista Operacional</Text>
           </View>
@@ -663,10 +655,9 @@ export function HomeScreen({
                 <View>
                   <Text style={styles.timingLabel}>Previsão Chegada</Text>
                   <Text style={styles.timingValue}>
-                    {formatTripDateTime(
-                      activeTrip.estimatedArrivalDate || activeTrip.scheduledDate,
-                      activeTrip.estimatedArrivalDate ? 0 : 6
-                    )}
+                    {activeTrip.estimatedArrivalDate
+                      ? formatTripDateTime(activeTrip.estimatedArrivalDate)
+                      : 'A definir'}
                   </Text>
                 </View>
               </View>
@@ -948,12 +939,36 @@ export function HomeScreen({
 
                       <View style={styles.docDetailRow}>
                         <Text style={styles.docDetailLabel}>Situação do Veículo:</Text>
-                        <View style={styles.docStatusPill}>
-                          <View style={styles.docStatusDotGreen} />
-                          <Text style={styles.docStatusTextGreen}>
-                            {activeTrip?.vehicle?.status === 'AVAILABLE' ? 'Disponível' : activeTrip?.vehicle?.status || 'Em dia'}
-                          </Text>
-                        </View>
+                        {(() => {
+                          const rawStatus =
+                            activeTrip?.vehicle?.status || summary?.trip?.vehicle?.status;
+                          const isMaint = rawStatus === 'MAINTENANCE';
+                          const statusLabel =
+                            rawStatus === 'AVAILABLE'
+                              ? 'Disponível'
+                              : rawStatus === 'IN_USE'
+                              ? 'Em operação'
+                              : isMaint
+                              ? 'Em manutenção'
+                              : rawStatus || '--';
+                          return (
+                            <View style={styles.docStatusPill}>
+                              <View
+                                style={
+                                  isMaint ? styles.docStatusDotOrange : styles.docStatusDotGreen
+                                }
+                              />
+                              <Text
+                                style={[
+                                  styles.docStatusTextGreen,
+                                  isMaint && { color: '#F59E0B' },
+                                ]}
+                              >
+                                {statusLabel}
+                              </Text>
+                            </View>
+                          );
+                        })()}
                       </View>
                     </View>
                   </>
@@ -989,22 +1004,31 @@ export function HomeScreen({
 
                 <View style={styles.docDetailsGrid}>
                   <View style={styles.docDetailRow}>
+                    <Text style={styles.docDetailLabel}>CPF do Condutor:</Text>
+                    <Text style={styles.docDetailValueMono}>
+                      {summary?.driver?.cpf && summary.driver.cpf.replace(/\D/g, '').length >= 2
+                        ? `***.***.***-${summary.driver.cpf.replace(/\D/g, '').slice(-2)}`
+                        : '--'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.docDetailRow}>
                     <Text style={styles.docDetailLabel}>Número CNH:</Text>
                     <Text style={styles.docDetailValueMono}>
-                      {summary?.driver?.cnhNumber ? `****${summary.driver.cnhNumber.slice(-4)}` : '----'} (Cat. {summary?.driver?.cnhCategory || 'B'})
+                      {summary?.driver?.cnhNumber
+                        ? `****${summary.driver.cnhNumber.slice(-4)}`
+                        : '----'}{' '}
+                      (Cat. {summary?.driver?.cnhCategory || '--'})
                     </Text>
                   </View>
 
                   <View style={styles.docDetailRow}>
                     <Text style={styles.docDetailLabel}>Validade da CNH:</Text>
                     <Text style={styles.docDetailValue}>
-                      {formatCnhDate(summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate) || '04/12/2026'}
+                      {formatCnhDate(
+                        summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate
+                      )}
                     </Text>
-                  </View>
-
-                  <View style={styles.docDetailRow}>
-                    <Text style={styles.docDetailLabel}>Exame Toxicológico:</Text>
-                    <Text style={styles.docDetailValueGreen}>Apto / Em dia</Text>
                   </View>
                 </View>
 

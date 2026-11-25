@@ -21,36 +21,14 @@ class NotificationService {
   async getNotifications(): Promise<DriverNotificationItem[]> {
     try {
       const data = await storage.getItem(STORAGE_KEY);
-      if (!data) return this.getDefaultNotifications();
-      return JSON.parse(data);
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed)) return [];
+      // Filtra eventuais notificações mockadas legadas que tenham ficado salvas localmente
+      return parsed.filter((n) => n?.id !== 'notif_welcome' && n?.id !== 'notif_cnh_check');
     } catch {
-      return this.getDefaultNotifications();
+      return [];
     }
-  }
-
-  /**
-   * Notificações iniciais amigáveis caso não haja histórico salvo
-   */
-  private getDefaultNotifications(): DriverNotificationItem[] {
-    return [
-      {
-        id: 'notif_welcome',
-        title: 'Bem-vindo ao RM Frotas!',
-        body: 'Seu cockpit operacional está conectado com a central de monitoramento em tempo real.',
-        type: 'INFO',
-        timestamp: new Date().toISOString(),
-        read: false,
-      },
-      {
-        id: 'notif_cnh_check',
-        title: 'Documentos do Motorista',
-        body: 'Mantenha sua CNH e exames toxicológicos sempre atualizados para liberação de viagens.',
-        type: 'CNH',
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        read: false,
-        actionScreen: 'profile',
-      },
-    ];
   }
 
   /**

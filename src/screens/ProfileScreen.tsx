@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { colors } from '../theme/colors';
 import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
@@ -33,16 +34,16 @@ interface ProfileScreenProps {
 }
 
 function formatCpf(cpf?: string): string {
-  if (!cpf) return '***.***.***-04';
+  if (!cpf || cpf === '--') return '--';
   const digits = cpf.replace(/\D/g, '');
   if (digits.length >= 2) {
     return `***.***.***-${digits.slice(-2)}`;
   }
-  return '***.***.***-04';
+  return '--';
 }
 
 function maskCnh(cnh?: string): string {
-  if (!cnh) return '****2551';
+  if (!cnh || cnh === '--') return '--';
   const cleaned = cnh.trim();
   if (cleaned.length >= 4) {
     return '****' + cleaned.slice(-4);
@@ -51,8 +52,12 @@ function maskCnh(cnh?: string): string {
 }
 
 function formatDate(dateStr?: string | null): string {
-  if (!dateStr) return '03/12/2026';
+  if (!dateStr || dateStr === '--') return '--/--/----';
   try {
+    const parts = dateStr.split('T')[0].split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
     const day = String(d.getDate()).padStart(2, '0');
@@ -69,13 +74,17 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
   const [profileUser, setProfileUser] = useState<User>(user);
   const [summary, setSummary] = useState<DriverPortalSummary | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [phone, setPhone] = useState('(91) 98123-4567');
+  const [phone, setPhone] = useState('');
   const [biometricsEnabled, setBiometricsEnabled] = useState(true);
   const [hasBiometricHardware, setHasBiometricHardware] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
+  const [locationPerm, setLocationPerm] = useState<{ foreground: boolean; background: boolean }>({
+    foreground: false,
+    background: false,
+  });
 
-  // Notificações locais
+  // Notificações locais persistidas
   const [notifTravels, setNotifTravels] = useState(true);
   const [notifFuel, setNotifFuel] = useState(true);
   const [notifAlerts, setNotifAlerts] = useState(true);
@@ -108,9 +117,20 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
     completed: false,
   });
 
+  const refreshLocationPerm = async () => {
+    try {
+      const fg = await Location.getForegroundPermissionsAsync();
+      const bg = fg.granted ? await Location.getBackgroundPermissionsAsync() : { granted: false };
+      setLocationPerm({ foreground: !!fg.granted, background: !!bg.granted });
+    } catch {
+      setLocationPerm({ foreground: false, background: false });
+    }
+  };
+
   useEffect(() => {
     biometricService.isAvailable().then(setHasBiometricHardware);
     biometricService.isEnabled().then(setBiometricsEnabled);
+    refreshLocationPerm();
 
     const unsubUpdate = appUpdateService.subscribe((st) => {
       setDownloadState(st);
@@ -118,6 +138,15 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
 
     storage.getItem(`rm_driver_phone_${user.id}`).then((p) => {
       if (p) setPhone(p);
+    });
+    storage.getItem(`rm_notif_prefs_${user.id}`).then((raw) => {
+      if (!raw) return;
+      try {
+        const prefs = JSON.parse(raw);
+        if (typeof prefs.travels === 'boolean') setNotifTravels(prefs.travels);
+        if (typeof prefs.fuel === 'boolean') setNotifFuel(prefs.fuel);
+        if (typeof prefs.alerts === 'boolean') setNotifAlerts(prefs.alerts);
+      } catch {}
     });
     storage.getItem('rm_driver_photo').then((cached) => {
       if (cached) setPhotoUrl(cached);
@@ -322,16 +351,13 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
     }
   };
 
-  const handleCallCentral = () => {
-    Linking.openURL('tel:08007637682').catch(() => {
-      Alert.alert('Telefone da Central', 'Ligue para: 0800 763 7682');
-    });
-  };
-
-  const handleWhatsAppSupport = () => {
-    const text = encodeURIComponent(`Olá, sou o motorista ${profileUser.name} e preciso de apoio operacional.`);
-    Linking.openURL(`https://wa.me/5591981234567?text=${text}`).catch(() => {
-      Alert.alert('WhatsApp', 'Número de apoio: (91) 98123-4567');
+  const handleEmailSupport = () => {
+    const subject = encodeURIComponent('Suporte Operacional - App RM Frotas');
+    const body = encodeURIComponent(
+      `Olá equipe RM Frotas,\n\nMotorista: ${profileUser.name || '--'}\nE-mail: ${profileUser.email || '--'}\n\nMensagem: `
+    );
+    Linking.openURL(`mailto:contato@rmfrotas.com.br?subject=${subject}&body=${body}`).catch(() => {
+      Alert.alert('Suporte por E-mail', 'Envie sua mensagem para: contato@rmfrotas.com.br');
     });
   };
 
@@ -359,6 +385,11 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
   const driverCnh = summary?.driver?.cnhNumber || '--';
   const driverCnhCat = summary?.driver?.cnhCategory || '--';
   const driverCnhExp = summary?.driver?.cnhExpirationDateIso || summary?.driver?.cnhExpirationDate || '--';
+  const isCnhExpired = summary?.driver?.isCnhExpired ?? false;
+  const daysUntilCnhExpires = summary?.driver?.daysUntilCnhExpires;
+  const isCnhExpiringSoon =
+    daysUntilCnhExpires !== undefined ? daysUntilCnhExpires <= 30 && daysUntilCnhExpires >= 0 : false;
+  const hasCnhData = driverCnh !== '--' || driverCnhCat !== '--';
 
   const vehiclePlate = summary?.trip?.vehicle?.plate || null;
   const vehicleModel = summary?.trip?.vehicle
@@ -447,7 +478,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
               {/* Informações do Motorista */}
               <View style={styles.heroInfoCol}>
                 <Text style={styles.heroDriverName} numberOfLines={1}>
-                  {summary?.driver?.name || profileUser.name || 'Rael Martins'}
+                  {summary?.driver?.name || profileUser.name || 'Motorista'}
                 </Text>
 
                 {/* Status Online */}
@@ -469,9 +500,59 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 <Ionicons name="card-outline" size={15} color="#FF7A00" />
                 <Text style={styles.sectionHeaderTitle}>DOCUMENTOS & HABILITAÇÃO</Text>
               </View>
-              <View style={styles.regularBadge}>
-                <View style={styles.regularDot} />
-                <Text style={styles.regularBadgeText}>REGULAR</Text>
+              <View
+                style={[
+                  styles.regularBadge,
+                  isCnhExpired
+                    ? {
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        borderColor: 'rgba(239, 68, 68, 0.3)',
+                      }
+                    : isCnhExpiringSoon
+                    ? {
+                        backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                        borderColor: 'rgba(245, 158, 11, 0.3)',
+                      }
+                    : !hasCnhData
+                    ? {
+                        backgroundColor: '#1E262B',
+                        borderColor: '#2C353B',
+                      }
+                    : undefined,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.regularDot,
+                    isCnhExpired
+                      ? { backgroundColor: '#EF4444' }
+                      : isCnhExpiringSoon
+                      ? { backgroundColor: '#F59E0B' }
+                      : !hasCnhData
+                      ? { backgroundColor: '#8E9DA8' }
+                      : undefined,
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.regularBadgeText,
+                    isCnhExpired
+                      ? { color: '#EF4444' }
+                      : isCnhExpiringSoon
+                      ? { color: '#F59E0B' }
+                      : !hasCnhData
+                      ? { color: '#8E9DA8' }
+                      : undefined,
+                  ]}
+                >
+                  {isCnhExpired
+                    ? 'VENCIDA'
+                    : isCnhExpiringSoon
+                    ? 'VENCENDO'
+                    : hasCnhData
+                    ? 'REGULAR'
+                    : 'SEM DADOS'}
+                </Text>
               </View>
             </View>
 
@@ -490,7 +571,9 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 >
                   {formatCpf(driverCpf)}
                 </Text>
-                <Text style={styles.docTileSub}>Titular</Text>
+                <Text style={styles.docTileSub}>
+                  {driverCpf !== '--' ? 'Titular' : 'Não informado'}
+                </Text>
               </View>
 
               {/* 2. CNH */}
@@ -505,9 +588,15 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                   adjustsFontSizeToFit
                   minimumFontScale={0.8}
                 >
-                  Cat. {driverCnhCat}
+                  {driverCnhCat !== '--' ? `Cat. ${driverCnhCat}` : maskCnh(driverCnh)}
                 </Text>
-                <Text style={styles.docTileSub}>Habilitado</Text>
+                <Text style={styles.docTileSub}>
+                  {isCnhExpired
+                    ? 'Bloqueada'
+                    : hasCnhData
+                    ? 'Habilitado'
+                    : 'Não informada'}
+                </Text>
               </View>
 
               {/* 3. Validade CNH */}
@@ -524,7 +613,15 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 >
                   {formatDate(driverCnhExp)}
                 </Text>
-                <Text style={styles.docTileSub}>Em dia</Text>
+                <Text style={styles.docTileSub}>
+                  {isCnhExpired
+                    ? 'Vencida'
+                    : isCnhExpiringSoon
+                    ? `Vence em ${daysUntilCnhExpires}d`
+                    : driverCnhExp !== '--'
+                    ? 'Em dia'
+                    : 'Não informada'}
+                </Text>
               </View>
             </View>
           </View>
@@ -545,9 +642,10 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 activeOpacity={0.7}
                 onPress={() => {
                   if (vehiclePlate) {
+                    const crlvInfo = summary?.trip?.vehicle?.crlvExpiration || 'Não informado';
                     Alert.alert(
                       'Veículo da Frota',
-                      `Placa: ${vehiclePlate}\nModelo: ${vehicleModel}\nKM Atual: ${vehicleKm}\nCRLV: Regularizado`
+                      `Placa: ${vehiclePlate}\nModelo: ${vehicleModel}\nKM Atual: ${vehicleKm}\nVencimento CRLV: ${crlvInfo}`
                     );
                   } else {
                     Alert.alert('Veículo', 'Nenhum veículo vinculado à sua escala no momento.');
@@ -746,7 +844,10 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
 
               <TouchableOpacity
                 style={styles.groupedRow}
-                onPress={() => setLocationModalOpen(true)}
+                onPress={() => {
+                  refreshLocationPerm();
+                  setLocationModalOpen(true);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.rowIconBoxGrey}>
@@ -756,8 +857,23 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                   <Text style={styles.rowTitleText}>Localização</Text>
                   <Text style={styles.rowSubtitleText}>Permissões de localização do app</Text>
                 </View>
-                <View style={styles.statusPillSmallGreen}>
-                  <Text style={styles.statusPillSmallText}>Ativo</Text>
+                <View
+                  style={[
+                    styles.statusPillSmallGreen,
+                    !locationPerm.foreground && {
+                      backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                      borderColor: 'rgba(245, 158, 11, 0.35)',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusPillSmallText,
+                      !locationPerm.foreground && { color: '#FBBF24' },
+                    ]}
+                  >
+                    {locationPerm.foreground ? 'Ativo' : 'Pendente'}
+                  </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
               </TouchableOpacity>
@@ -930,7 +1046,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
                 style={styles.modalInput}
                 value={editPhone}
                 onChangeText={setEditPhone}
-                placeholder="(91) 98123-4567"
+                placeholder="(00) 00000-0000"
                 placeholderTextColor="#5A6872"
                 keyboardType="phone-pad"
               />
@@ -1111,7 +1227,15 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
 
             <TouchableOpacity
               style={[styles.modalSaveBtn, { width: '100%', marginTop: 16 }]}
-              onPress={() => {
+              onPress={async () => {
+                await storage.setItem(
+                  `rm_notif_prefs_${user.id}`,
+                  JSON.stringify({
+                    travels: notifTravels,
+                    fuel: notifFuel,
+                    alerts: notifAlerts,
+                  })
+                );
                 setNotificationsModalOpen(false);
                 Alert.alert('Sucesso', 'Preferências de notificação salvas no dispositivo.');
               }}
@@ -1143,10 +1267,31 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
               </TouchableOpacity>
             </View>
 
-            <View style={styles.infoBoxWithIcon}>
-              <Ionicons name="shield-checkmark" size={24} color="#10B981" />
+            <View
+              style={[
+                styles.infoBoxWithIcon,
+                !locationPerm.foreground && {
+                  backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                  borderColor: 'rgba(245, 158, 11, 0.3)',
+                },
+              ]}
+            >
+              <Ionicons
+                name={locationPerm.foreground ? 'shield-checkmark' : 'alert-circle'}
+                size={24}
+                color={locationPerm.foreground ? '#10B981' : '#F59E0B'}
+              />
               <View style={{ flex: 1 }}>
-                <Text style={styles.infoBoxTitle}>Rastreamento em Tempo Real Ativo</Text>
+                <Text
+                  style={[
+                    styles.infoBoxTitle,
+                    !locationPerm.foreground && { color: '#FBBF24' },
+                  ]}
+                >
+                  {locationPerm.foreground
+                    ? 'Permissão de Localização Concedida'
+                    : 'Permissão de Localização Pendente'}
+                </Text>
                 <Text style={styles.infoBoxDesc}>
                   O app coleta dados de telemetria durante viagens em andamento para garantir segurança operacional e registro de percurso.
                 </Text>
@@ -1154,17 +1299,36 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
             </View>
 
             <View style={styles.settingsRowSimple}>
-              <Text style={styles.settingsRowSimpleLabel}>Precisão</Text>
-              <Text style={styles.settingsRowSimpleValue}>Alta precisão (GPS Satélite)</Text>
+              <Text style={styles.settingsRowSimpleLabel}>Primeiro plano</Text>
+              <Text style={styles.settingsRowSimpleValue}>
+                {locationPerm.foreground ? 'Permitido (GPS Satélite)' : 'Não concedido'}
+              </Text>
             </View>
 
             <View style={styles.settingsRowSimple}>
               <Text style={styles.settingsRowSimpleLabel}>Segundo plano</Text>
-              <Text style={styles.settingsRowSimpleValue}>Ativo com Foreground Service</Text>
+              <Text style={styles.settingsRowSimpleValue}>
+                {locationPerm.background ? 'Ativo com Foreground Service' : 'Não concedido'}
+              </Text>
             </View>
 
+            {!locationPerm.foreground && (
+              <TouchableOpacity
+                style={[styles.modalCancelBtn, { width: '100%', marginTop: 14 }]}
+                onPress={async () => {
+                  await Location.requestForegroundPermissionsAsync().catch(() => {});
+                  await Location.requestBackgroundPermissionsAsync().catch(() => {});
+                  await refreshLocationPerm();
+                }}
+              >
+                <Text style={[styles.modalCancelText, { color: '#FF7A00' }]}>
+                  Conceder Permissão de GPS
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              style={[styles.modalSaveBtn, { width: '100%', marginTop: 16 }]}
+              style={[styles.modalSaveBtn, { width: '100%', marginTop: 12 }]}
               onPress={() => setLocationModalOpen(false)}
             >
               <Text style={styles.modalSaveText}>Fechar</Text>
@@ -1194,24 +1358,13 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.supportButton} onPress={handleCallCentral}>
+            <TouchableOpacity style={styles.supportButton} onPress={handleEmailSupport}>
               <View style={styles.supportIconBoxOrange}>
-                <Ionicons name="call" size={20} color="#FF7A00" />
+                <Ionicons name="mail" size={20} color="#FF7A00" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.supportTitle}>Central 0800 Operacional</Text>
-                <Text style={styles.supportSub}>0800 763 7682 • Chamada Gratuita 24h</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.supportButton} onPress={handleWhatsAppSupport}>
-              <View style={styles.supportIconBoxGreen}>
-                <Ionicons name="logo-whatsapp" size={20} color="#10B981" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.supportTitle}>WhatsApp de Apoio</Text>
-                <Text style={styles.supportSub}>(91) 98123-4567 • Suporte Rápido</Text>
+                <Text style={styles.supportTitle}>E-mail de Suporte Oficial</Text>
+                <Text style={styles.supportSub}>contato@rmfrotas.com.br</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color="#8E9DA8" />
             </TouchableOpacity>

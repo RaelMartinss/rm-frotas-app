@@ -164,7 +164,14 @@ export function ChecklistScreen({ onBack, onSuccess, activeTrip }: ChecklistScre
   const defectCount = Object.values(items).filter((it) => it.status === 'DEFECT').length;
 
   const handleSaveChecklist = async () => {
-    const tripId = activeTrip?.id || 'trip_current_1';
+    const tripId = activeTrip?.id;
+    if (!tripId) {
+      Alert.alert(
+        'Nenhuma viagem escalada',
+        'Você precisa ter uma viagem programada ou em andamento para registrar o checklist pré-viagem.'
+      );
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -185,10 +192,16 @@ export function ChecklistScreen({ onBack, onSuccess, activeTrip }: ChecklistScre
       const result = await api.saveChecklist(tripId, checklistPayload);
 
       Alert.alert(
-        hasDefects ? '⚠️ Checklist Salvo com Ressalvas' : '✅ Checklist Conforme!',
-        hasDefects
-          ? `${defectCount} item(ns) foram marcados com não-conformidade. A equipe de manutenção foi alertada.`
-          : 'Todos os itens foram inspecionados com sucesso. Tenha uma excelente e segura viagem!',
+        result.offline
+          ? '💾 Checklist Salvo no Dispositivo'
+          : hasDefects
+          ? '⚠️ Checklist Salvo com Ressalvas'
+          : '✅ Checklist Conforme!',
+        result.offline
+          ? 'Sem conexão com o servidor no momento. O checklist ficou salvo localmente neste aparelho.'
+          : hasDefects
+          ? `${defectCount} item(ns) foram registrados com não-conformidade no checklist da viagem.`
+          : 'Todos os itens foram inspecionados e registrados com sucesso. Tenha uma excelente e segura viagem!',
         [
           {
             text: 'Concluir',
@@ -205,6 +218,36 @@ export function ChecklistScreen({ onBack, onSuccess, activeTrip }: ChecklistScre
       setSubmitting(false);
     }
   };
+
+  if (!activeTrip?.id) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="light-content" backgroundColor="#0B0E11" />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <View style={styles.headerTitles}>
+            <Text style={styles.headerTitle}>Checklist Pré-Viagem</Text>
+            <Text style={styles.headerSubtitle}>Nenhuma viagem escalada</Text>
+          </View>
+        </View>
+
+        <View style={styles.emptyStateBox}>
+          <View style={styles.emptyStateIconWrap}>
+            <MaterialCommunityIcons name="clipboard-clock-outline" size={44} color={colors.primary} />
+          </View>
+          <Text style={styles.emptyStateTitle}>Nenhuma viagem escalada</Text>
+          <Text style={styles.emptyStateDesc}>
+            Você não possui uma viagem ativa ou programada no momento para vincular a inspeção veicular.
+          </Text>
+          <TouchableOpacity style={styles.emptyStateBtn} onPress={onBack} activeOpacity={0.8}>
+            <Text style={styles.emptyStateBtnText}>Voltar ao Início</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // Agrupamento por categorias
   const categories = [
@@ -601,5 +644,47 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  emptyStateBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  emptyStateIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: colors.primaryMuted,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptyStateDesc: {
+    fontSize: 13,
+    color: '#8A99AD',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  emptyStateBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
+    borderRadius: 14,
+  },
+  emptyStateBtnText: {
+    color: '#080B0C',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

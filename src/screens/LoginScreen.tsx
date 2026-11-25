@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
 import { biometricService, BiometricType } from '../services/biometric.service';
+import { CURRENT_APP_VERSION } from '../services/app-update.service';
 import { User } from '../types/auth';
 
 interface LoginScreenProps {
@@ -263,7 +264,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               RM FROTAS • SUA FROTA, MAIS EFICIENTE
             </Text>
             <Text style={styles.footerVersion}>
-              Versão Nativa 1.0.0 {biometricAvailable ? '• Biometria Ativa' : ''}
+              Versão {CURRENT_APP_VERSION} {biometricAvailable ? '• Biometria Ativa' : ''}
             </Text>
           </View>
         </ScrollView>

@@ -142,12 +142,20 @@ class ApiService {
   }
 
   async logout(clearAll = false): Promise<void> {
-    await storage.removeItem('rm_token');
-    await storage.removeItem('rm_user');
+    await Promise.all([
+      storage.removeItem('rm_token'),
+      storage.removeItem('rm_user'),
+      storage.removeItem('rm_driver_photo'),
+      storage.removeItem(CACHE_KEYS.CURRENT_TRIP),
+      storage.removeItem(CACHE_KEYS.HISTORY),
+      storage.removeItem(CACHE_KEYS.FUEL_HISTORY),
+    ]).catch(() => {});
     if (clearAll) {
-      await storage.removeItem('rm_refresh_token');
-      await storage.removeItem('rm_last_user');
-      await storage.removeItem('rm_biometrics_enabled');
+      await Promise.all([
+        storage.removeItem('rm_refresh_token'),
+        storage.removeItem('rm_last_user'),
+        storage.removeItem('rm_biometrics_enabled'),
+      ]).catch(() => {});
     }
   }
 
@@ -257,7 +265,7 @@ class ApiService {
   async saveChecklist(
     tripId: string,
     checklist: TripChecklistDTO | any
-  ): Promise<{ message: string; tripId: string; checklist?: any }> {
+  ): Promise<{ message: string; tripId: string; checklist?: any; offline?: boolean }> {
     try {
       const res = await this.authenticatedFetch('/driver-portal/checklist', {
         method: 'POST',
@@ -271,7 +279,17 @@ class ApiService {
 
       return res.json();
     } catch (err: any) {
-      // Salva no storage local em caso de oscilação de sinal
+      const isNetworkErr =
+        !networkService.isOnline ||
+        err?.message?.includes('Network') ||
+        err?.message?.includes('Failed to fetch') ||
+        err?.message?.includes('Abort');
+
+      if (!isNetworkErr) {
+        throw err;
+      }
+
+      // Salva no storage local apenas em caso de oscilação de sinal
       try {
         await storage.setItem(`rm_checklist_${tripId}`, JSON.stringify(checklist));
       } catch {}
@@ -280,6 +298,7 @@ class ApiService {
         message: 'Checklist salvo no dispositivo.',
         tripId,
         checklist,
+        offline: true,
       };
     }
   }

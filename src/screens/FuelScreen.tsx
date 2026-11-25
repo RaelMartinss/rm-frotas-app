@@ -186,9 +186,17 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
       return;
     }
 
+    const targetVehicleId = vehicle?.id || defaultVehicle?.id;
+    if (!targetVehicleId) {
+      Alert.alert(
+        'Veículo não vinculado',
+        'Você não possui um veículo vinculado à sua escala no momento. Aguarde a designação de uma viagem pela central para registrar abastecimentos.'
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const targetVehicleId = vehicle?.id || defaultVehicle?.id || '74f74c7a-254b-477f-b715-734ee09f9a27';
       const fuelDto: DriverFuelDTO = {
         vehicleId: targetVehicleId,
         currentKm: parsedKm,
@@ -330,7 +338,7 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
               value={km}
               onChangeText={setKm}
               keyboardType="numeric"
-              placeholder={`ex: ${vehicle?.currentKm || '148320'}`}
+              placeholder={vehicle?.currentKm ? `ex: ${vehicle.currentKm}` : 'Informe o KM atual'}
               placeholderTextColor={colors.textDim}
             />
             <Text style={styles.inputSuffix}>KM</Text>

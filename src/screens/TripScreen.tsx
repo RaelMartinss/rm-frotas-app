@@ -77,7 +77,7 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
       let startedAtIso = new Date().toISOString();
 
       // 1. Salvar checklist e iniciar viagem na API
-      if (effectiveTripId && !effectiveTripId.startsWith('trip_current_')) {
+      if (effectiveTripId) {
         await api.saveChecklist(effectiveTripId, checklist).catch(() => {});
         const startRes = await api.startTrip(effectiveTripId);
         if (startRes?.startedAt) {
@@ -185,7 +185,16 @@ export function TripScreen({ onBack, onTripStarted, tripId: propTripId, defaultV
                   <Text style={styles.vehicleModelText}>{vehicleModel}</Text>
                 ) : null}
               </View>
-              <Text style={styles.vehicleSubtitle}>Cavalo Mecânico • Diesel S10</Text>
+              <Text style={styles.vehicleSubtitle}>
+                {[
+                  currentVehicle?.year ? `Ano ${currentVehicle.year}` : null,
+                  currentVehicle?.currentKm != null
+                    ? `${Number(currentVehicle.currentKm).toLocaleString('pt-BR')} km`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' • ') || 'Veículo vinculado à escala'}
+              </Text>
             </View>
           </View>
         </View>
