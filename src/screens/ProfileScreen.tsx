@@ -30,7 +30,7 @@ import { DriverPortalSummary } from '../types/driver';
 
 interface ProfileScreenProps {
   user: User;
-  onLogout: () => void;
+  onLogout: (clearAll?: boolean) => void;
   onNavigateToHistory?: () => void;
 }
 
@@ -301,8 +301,20 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       Alert.alert('Atenção', 'Informe sua senha atual.');
       return;
     }
-    if (!newPassword || newPassword.length < 6) {
-      Alert.alert('Atenção', 'A nova senha deve possuir no mínimo 6 dígitos.');
+    if (
+      !newPassword ||
+      newPassword.length < 8 ||
+      !/[A-Za-z]/.test(newPassword) ||
+      !/\d/.test(newPassword)
+    ) {
+      Alert.alert(
+        'Senha Fraca',
+        'A nova senha deve possuir no mínimo 8 caracteres, incluindo letras e números.'
+      );
+      return;
+    }
+    if (newPassword === currentPassword) {
+      Alert.alert('Atenção', 'A nova senha deve ser diferente da senha atual.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -336,7 +348,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
             { text: 'Mais tarde', style: 'cancel' },
             {
               text: 'Atualizar Agora',
-              onPress: () => appUpdateService.downloadAndInstall(res.downloadUrl),
+              onPress: () => appUpdateService.downloadAndInstall(res.downloadUrl, res.sha256),
             },
           ]
         );
@@ -364,12 +376,32 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
   };
 
   const handleConfirmLogout = () => {
+    if (hasBiometricHardware && biometricsEnabled) {
+      Alert.alert(
+        'Sair da Conta',
+        'Como deseja encerrar sua sessão neste dispositivo?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Manter Biometria',
+            onPress: () => onLogout(false),
+          },
+          {
+            text: 'Sair e Esquecer Conta',
+            style: 'destructive',
+            onPress: () => onLogout(true),
+          },
+        ]
+      );
+      return;
+    }
+
     Alert.alert(
       'Sair da Conta',
       'Deseja realmente encerrar sua sessão no aplicativo RM Frotas?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sair', style: 'destructive', onPress: onLogout },
+        { text: 'Sair', style: 'destructive', onPress: () => onLogout(true) },
       ]
     );
   };
@@ -1121,12 +1153,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
             </View>
 
             <View style={styles.modalInputGroup}>
-              <Text style={styles.modalInputLabel}>Nova Senha (mínimo 6 dígitos)</Text>
+              <Text style={styles.modalInputLabel}>Nova Senha (mín. 8 caracteres, letras e números)</Text>
               <TextInput
                 style={styles.modalInput}
                 value={newPassword}
                 onChangeText={setNewPassword}
-                placeholder="Nova senha segura"
+                placeholder="Mínimo 8 caracteres (letras e números)"
                 placeholderTextColor="#5A6872"
                 secureTextEntry={!showPassword}
               />

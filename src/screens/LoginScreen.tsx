@@ -33,8 +33,18 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   // Estados de Biometria
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [hasBiometricSession, setHasBiometricSession] = useState(false);
   const [biometricType, setBiometricType] = useState<BiometricType>('none');
   const [lastUser, setLastUser] = useState<User | null>(null);
+
+  const canUseBiometrics =
+    biometricAvailable &&
+    biometricEnabled &&
+    hasBiometricSession &&
+    Boolean(lastUser) &&
+    lastUser?.role === 'DRIVER' &&
+    !lastUser?.mustChangePassword;
 
   // Controle de teclado e rolagem automática dos campos
   const keyboardHeight = useKeyboardOffset();
@@ -50,26 +60,33 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       if (focusedField === 'password') {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       } else if (focusedField === 'email') {
-        scrollViewRef.current?.scrollTo({ y: lastUser && biometricAvailable ? 130 : 60, animated: true });
+        scrollViewRef.current?.scrollTo({ y: canUseBiometrics ? 130 : 60, animated: true });
       }
     }, 60);
 
     return () => clearTimeout(timer);
-  }, [isKeyboardOpen, keyboardHeight, focusedField, lastUser, biometricAvailable]);
+  }, [isKeyboardOpen, keyboardHeight, focusedField, canUseBiometrics]);
 
   useEffect(() => {
     async function checkBiometrics() {
       try {
-        const available = await biometricService.isAvailable();
+        const [available, enabled, hasRefresh, stored] = await Promise.all([
+          biometricService.isAvailable(),
+          biometricService.isEnabled(),
+          api.hasRefreshToken(),
+          api.getLastUser(),
+        ]);
+
         setBiometricAvailable(available);
+        setBiometricEnabled(available && enabled);
+        setHasBiometricSession(hasRefresh);
 
         if (available) {
           const type = await biometricService.getBiometryType();
           setBiometricType(type);
         }
 
-        const stored = await api.getLastUser();
-        if (stored) {
+        if (stored && stored.role === 'DRIVER') {
           setLastUser(stored);
           if (stored.email) {
             setEmail(stored.email);
@@ -93,8 +110,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       setLoading(true);
       setErrorMessage(null);
       const auth = await api.login({ email: email.trim(), password });
-      // Se houver biometria no aparelho, habilita para o próximo acesso
-      if (biometricAvailable) {
+      // Só ativa biometria automaticamente no primeiro acesso caso o usuário não tenha desativado manualmente
+      if (biometricAvailable && !(await biometricService.hasExplicitPreference())) {
         await biometricService.setEnabled(true);
       }
       onLoginSuccess(auth.user);
@@ -124,8 +141,9 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       if (user) {
         onLoginSuccess(user);
       } else {
+        setHasBiometricSession(false);
         setErrorMessage(
-          'Sessão expirada. Digite sua senha uma vez para revalidar a biometria.'
+          'Sessão expirada ou encerrada. Digite sua senha para revalidar o acesso.'
         );
       }
     } catch (err: any) {
@@ -197,8 +215,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </View>
             )}
 
-            {/* BOTÃO DE ACESSO BIOMÉTRICO RÁPIDO SE HOUVER USUÁRIO ANTERIOR */}
-            {biometricAvailable && lastUser && (
+            {/* BOTÃO DE ACESSO BIOMÉTRICO RÁPIDO SE HOUVER SESSÃO E PREFERÊNCIA ATIVA */}
+            {canUseBiometrics && lastUser && (
               <View style={styles.biometricSection}>
                 <TouchableOpacity
                   style={styles.biometricButton}
@@ -293,20 +311,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                   <Text style={styles.loginButtonText}>Entrar</Text>
                 )}
               </TouchableOpacity>
-
-              {/* Botão compacto de biometria ao lado se não houver card rápido */}
-              {biometricAvailable && !lastUser && (
-                <TouchableOpacity
-                  style={styles.biometricQuickIconButton}
-                  onPress={handleBiometricAuth}
-                  disabled={biometricLoading}
-                  activeOpacity={0.8}
-                >
-                  <Text style={{ fontSize: 22 }}>
-                    {biometricType === 'facial' ? '👤' : '👆'}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
 
@@ -317,7 +321,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 RM FROTAS • SUA FROTA, MAIS EFICIENTE
               </Text>
               <Text style={styles.footerVersion}>
-                Versão {CURRENT_APP_VERSION} {biometricAvailable ? '• Biometria Ativa' : ''}
+                Versão {CURRENT_APP_VERSION} {canUseBiometrics ? '• Biometria Ativa' : ''}
               </Text>
             </View>
           )}

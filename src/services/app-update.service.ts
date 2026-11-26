@@ -15,6 +15,7 @@ export interface GitHubRelease {
     name: string;
     browser_download_url: string;
     size: number;
+    digest?: string | null;
   }>;
 }
 
@@ -23,6 +24,7 @@ export interface UpdateInfo {
   currentVersion: string;
   latestVersion: string;
   downloadUrl: string;
+  sha256?: string | null;
   releaseNotes: string;
 }
 
@@ -164,15 +166,17 @@ class AppUpdateService {
 
       const latestTag = release.tag_name.replace(/^v/i, '').trim();
       const apkAsset = release.assets?.find((a) => a.name.endsWith('.apk'));
-      const downloadUrl = apkAsset?.browser_download_url || release.html_url || '';
+      const downloadUrl = apkAsset?.browser_download_url || '';
+      const sha256 = apkAsset?.digest || this.extractSha256FromBody(release.body, apkAsset?.name);
 
-      const hasUpdate = this.isNewerVersion(latestTag, CURRENT_APP_VERSION);
+      const hasUpdate = Boolean(downloadUrl) && this.isNewerVersion(latestTag, CURRENT_APP_VERSION);
 
       return {
         hasUpdate,
         currentVersion: CURRENT_APP_VERSION,
         latestVersion: latestTag,
         downloadUrl,
+        sha256,
         releaseNotes: this.formatReleaseNotes(release.body),
       };
     } catch (err) {
@@ -188,16 +192,21 @@ class AppUpdateService {
   }
 
   /**
-   * Inicia o download e instalação direta do APK dentro do app sem abrir o navegador
+   * Inicia o download e instalação direta do APK dentro do app com validação HTTPS e integridade SHA-256
    */
-  async downloadAndInstall(downloadUrl: string): Promise<void> {
-    const targetUrl = downloadUrl || '';
+  async downloadAndInstall(downloadUrl: string, expectedSha256?: string | null): Promise<void> {
+    const targetUrl = (downloadUrl || '').trim();
     if (!targetUrl) {
       Alert.alert('Erro', 'Link do instalador APK não encontrado na versão.');
       return;
     }
 
-    if (Platform.OS === 'android' && AppInstaller?.downloadAndInstall) {
+    if (!targetUrl.startsWith(`https://github.com/${GITHUB_REPO}/releases/download/`)) {
+      Alert.alert('Atualização Bloqueada', 'Origem do pacote APK não reconhecida.');
+      return;
+    }
+
+    if (Platform.OS === 'android' && (AppInstaller?.downloadAndInstallVerified || AppInstaller?.downloadAndInstall)) {
       try {
         const can = await this.canInstall();
         if (!can) {
@@ -222,7 +231,11 @@ class AppUpdateService {
           completed: false,
         });
 
-        await AppInstaller.downloadAndInstall(targetUrl);
+        if (AppInstaller.downloadAndInstallVerified) {
+          await AppInstaller.downloadAndInstallVerified(targetUrl, expectedSha256 || '');
+        } else {
+          await AppInstaller.downloadAndInstall(targetUrl);
+        }
       } catch (err: any) {
         this.updateState({
           isDownloading: false,
@@ -241,6 +254,16 @@ class AppUpdateService {
         Alert.alert('Download', 'Acesse o portal para baixar a atualização mais recente.');
       }
     }
+  }
+
+  private extractSha256FromBody(rawBody?: string, assetName?: string): string | null {
+    if (!rawBody || typeof rawBody !== 'string') return null;
+    const match = rawBody.match(/\b([a-fA-F0-9]{64})\b/);
+    if (!match) return null;
+    if (assetName && !rawBody.includes(assetName) && !rawBody.toLowerCase().includes('sha256')) {
+      return null;
+    }
+    return match[1].toLowerCase();
   }
 
   /**

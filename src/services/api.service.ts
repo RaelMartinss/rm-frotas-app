@@ -1,5 +1,6 @@
 import { storage } from './storage.service';
 import { networkService } from './network.service';
+import { biometricService } from './biometric.service';
 import { AuthResponse, LoginCredentials, User } from '../types/auth';
 import {
   DriverPortalSummary,
@@ -31,8 +32,42 @@ interface QueuedOfflineSos {
   timestamp: string;
 }
 
+export type RefreshResult =
+  | { status: 'ok'; data: AuthResponse }
+  | { status: 'revoked' }
+  | { status: 'network_error' }
+  | { status: 'no_token' };
+
 class ApiService {
-  private refreshPromise: Promise<AuthResponse | null> | null = null;
+  private refreshPromise: Promise<RefreshResult> | null = null;
+  private onUnauthorizedCallback: (() => void) | null = null;
+
+  setOnUnauthorized(callback: (() => void) | null): void {
+    this.onUnauthorizedCallback = callback;
+  }
+
+  async hasRefreshToken(): Promise<boolean> {
+    const token = await storage.getItem('rm_refresh_token');
+    return Boolean(token);
+  }
+
+  private async purgeSessionStorage(clearAccount = false): Promise<void> {
+    await Promise.all([
+      storage.removeItem('rm_token'),
+      storage.removeItem('rm_user'),
+      storage.removeItem('rm_driver_photo'),
+      storage.removeItem(CACHE_KEYS.CURRENT_TRIP),
+      storage.removeItem(CACHE_KEYS.HISTORY),
+      storage.removeItem(CACHE_KEYS.FUEL_HISTORY),
+      ...(clearAccount
+        ? [
+            storage.removeItem('rm_refresh_token'),
+            storage.removeItem('rm_last_user'),
+            storage.removeItem('rm_biometrics_enabled'),
+          ]
+        : []),
+    ]).catch(() => {});
+  }
 
   private async getAuthHeader(customHeaders?: Record<string, string>): Promise<HeadersInit> {
     const token = await storage.getItem('rm_token');
@@ -74,10 +109,17 @@ class ApiService {
 
       // Se retornar 401 Unauthorized, aguarda renovação única (mutex) e repete a requisição
       if (response.status === 401) {
-        const refreshed = await this.refresh();
-        if (refreshed) {
+        const refreshRes = await this.refreshDetailed();
+        if (refreshRes.status === 'ok') {
           const retryHeaders = await this.getAuthHeader(options.headers as Record<string, string>);
           response = await fetchWithTimeout(retryHeaders);
+          if (response.status === 401) {
+            await this.purgeSessionStorage(true);
+            this.onUnauthorizedCallback?.();
+          }
+        } else if (refreshRes.status === 'no_token') {
+          await this.purgeSessionStorage(false);
+          this.onUnauthorizedCallback?.();
         }
       }
 
@@ -113,6 +155,30 @@ class ApiService {
     }
 
     const data: AuthResponse = await response.json();
+
+    // Restrição estrita: aplicativo móvel permitido exclusivamente para contas DRIVER
+    if (data.user?.role !== 'DRIVER') {
+      if (data.refreshToken) {
+        fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(data.accessToken ? { Authorization: `Bearer ${data.accessToken}` } : {}),
+          },
+          body: JSON.stringify({ refreshToken: data.refreshToken }),
+        }).catch(() => {});
+      }
+      throw new Error(
+        'Este aplicativo é exclusivo para motoristas. Gestores e administradores devem acessar o Portal Web.'
+      );
+    }
+
+    // Se trocou de motorista no mesmo aparelho, limpa caches operacionais do condutor anterior
+    const prevUser = await this.getLastUser();
+    if (prevUser && prevUser.id !== data.user.id) {
+      await this.purgeSessionStorage(false);
+    }
+
     await storage.setItem('rm_token', data.accessToken);
     await storage.setItem('rm_refresh_token', data.refreshToken);
     await storage.setItem('rm_user', JSON.stringify(data.user));
@@ -120,18 +186,18 @@ class ApiService {
     return data;
   }
 
-  async refresh(): Promise<AuthResponse | null> {
+  async refreshDetailed(timeoutMs = 12000): Promise<RefreshResult> {
     if (this.refreshPromise) {
       return this.refreshPromise;
     }
 
-    this.refreshPromise = (async () => {
+    this.refreshPromise = (async (): Promise<RefreshResult> => {
       const refreshToken = await storage.getItem('rm_refresh_token');
-      if (!refreshToken) return null;
+      if (!refreshToken) return { status: 'no_token' };
 
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 12000);
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
         const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -139,8 +205,28 @@ class ApiService {
           signal: controller.signal,
         }).finally(() => clearTimeout(timer));
 
-        if (!response.ok) return null;
+        networkService.setOnline(true);
+
+        if (response.status === 401 || response.status === 403) {
+          // Sessão revogada, expirada ou usuário inativado no servidor: limpa tokens imediatamente
+          await storage.removeItem('rm_refresh_token').catch(() => {});
+          await this.purgeSessionStorage(false);
+          this.onUnauthorizedCallback?.();
+          return { status: 'revoked' };
+        }
+
+        if (!response.ok) {
+          return { status: 'network_error' };
+        }
+
         const data: AuthResponse = await response.json();
+
+        if (data.user && data.user.role !== 'DRIVER') {
+          await this.purgeSessionStorage(true);
+          this.onUnauthorizedCallback?.();
+          return { status: 'revoked' };
+        }
+
         await storage.setItem('rm_token', data.accessToken);
         if (data.refreshToken) {
           await storage.setItem('rm_refresh_token', data.refreshToken);
@@ -149,9 +235,9 @@ class ApiService {
           await storage.setItem('rm_user', JSON.stringify(data.user));
           await storage.setItem('rm_last_user', JSON.stringify(data.user));
         }
-        return data;
+        return { status: 'ok', data };
       } catch {
-        return null;
+        return { status: 'network_error' };
       } finally {
         this.refreshPromise = null;
       }
@@ -160,18 +246,38 @@ class ApiService {
     return this.refreshPromise;
   }
 
+  async refresh(): Promise<AuthResponse | null> {
+    const result = await this.refreshDetailed();
+    return result.status === 'ok' ? result.data : null;
+  }
+
   async loginWithBiometrics(): Promise<User | null> {
+    const bioEnabled = await biometricService.isEnabled();
+    if (!bioEnabled) return null;
+
     const refreshToken = await storage.getItem('rm_refresh_token');
     const lastUserStr = await storage.getItem('rm_last_user');
     if (!refreshToken || !lastUserStr) return null;
 
-    const refreshed = await this.refresh();
-    if (refreshed && refreshed.user) {
-      return refreshed.user;
+    const refreshRes = await this.refreshDetailed();
+    if (refreshRes.status === 'ok' && refreshRes.data.user) {
+      return refreshRes.data.user;
     }
 
+    // Se o servidor rejeitou/revogou a sessão (401/403) ou não há token válido, NUNCA permite bypass local
+    if (refreshRes.status === 'revoked' || refreshRes.status === 'no_token') {
+      return null;
+    }
+
+    // Apenas em falha genuína de conectividade (offline na estrada) e com refresh_token íntegro no SecureStore
+    const intactRefresh = await storage.getItem('rm_refresh_token');
+    if (!intactRefresh) return null;
+
     try {
-      const user = JSON.parse(lastUserStr);
+      const user: User = JSON.parse(lastUserStr);
+      if (user?.role !== 'DRIVER' || user?.mustChangePassword) {
+        return null;
+      }
       await storage.setItem('rm_user', JSON.stringify(user));
       return user;
     } catch {
@@ -180,21 +286,33 @@ class ApiService {
   }
 
   async logout(clearAll = false): Promise<void> {
-    await Promise.all([
-      storage.removeItem('rm_token'),
-      storage.removeItem('rm_user'),
-      storage.removeItem('rm_driver_photo'),
-      storage.removeItem(CACHE_KEYS.CURRENT_TRIP),
-      storage.removeItem(CACHE_KEYS.HISTORY),
-      storage.removeItem(CACHE_KEYS.FUEL_HISTORY),
-    ]).catch(() => {});
     if (clearAll) {
-      await Promise.all([
-        storage.removeItem('rm_refresh_token'),
-        storage.removeItem('rm_last_user'),
-        storage.removeItem('rm_biometrics_enabled'),
-      ]).catch(() => {});
+      const [refreshToken, accessToken] = await Promise.all([
+        storage.getItem('rm_refresh_token'),
+        storage.getItem('rm_token'),
+      ]);
+
+      if (refreshToken) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({ refreshToken }),
+          signal: controller.signal,
+        })
+          .catch(() => {})
+          .finally(() => clearTimeout(timer));
+      }
+
+      await this.purgeSessionStorage(true);
+      return;
     }
+
+    await this.purgeSessionStorage(false);
   }
 
   async getLastUser(): Promise<User | null> {
@@ -878,20 +996,28 @@ class ApiService {
   }
 
   /**
-   * Altera a senha do usuário autenticado
+   * Altera a senha do usuário autenticado, revogando outras sessões e rotacionando o token atual
    */
   async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
-    const res = await this.authenticatedFetch('/me/password', {
-      method: 'PATCH',
+    const res = await this.authenticatedFetch('/auth/change-password', {
+      method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || 'Falha ao alterar senha.');
+      const msg = Array.isArray(err.message) ? err.message[0] : err.message;
+      throw new Error(msg || 'Falha ao alterar senha.');
     }
 
     const data = await res.json();
+    if (data.accessToken) {
+      await storage.setItem('rm_token', data.accessToken);
+    }
+    if (data.refreshToken) {
+      await storage.setItem('rm_refresh_token', data.refreshToken);
+    }
+
     try {
       const user = await this.getStoredUser();
       if (user) {
@@ -900,7 +1026,7 @@ class ApiService {
         await storage.setItem('rm_last_user', JSON.stringify(user));
       }
     } catch {}
-    return data;
+    return { message: data.message || 'Senha alterada com sucesso!' };
   }
 
   /**

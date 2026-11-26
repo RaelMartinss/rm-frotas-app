@@ -513,7 +513,9 @@ export function HomeScreen({
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.updateInstallButton}
-                  onPress={() => appUpdateService.downloadAndInstall(updateInfo.downloadUrl)}
+                  onPress={() =>
+                    appUpdateService.downloadAndInstall(updateInfo.downloadUrl, updateInfo.sha256)
+                  }
                   activeOpacity={0.8}
                 >
                   <Ionicons name="download-outline" size={15} color="#080B0C" />

@@ -22,9 +22,26 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+import javax.net.ssl.HttpsURLConnection;
 
 public class AppInstallerModule extends ReactContextBaseJavaModule {
+    private static final Set<String> ALLOWED_HOSTS = new HashSet<>(Arrays.asList(
+        "github.com",
+        "api.github.com",
+        "objects.githubusercontent.com",
+        "release-assets.githubusercontent.com"
+    ));
+
+    private static final String ALLOWED_REPO_PREFIX = "/raelmartinss/rm-frotas-app/";
+    private static final String ALLOWED_API_REPO_PREFIX = "/repos/raelmartinss/rm-frotas-app/";
+
     private final ReactApplicationContext reactContext;
 
     public AppInstallerModule(ReactApplicationContext reactContext) {
@@ -76,14 +93,37 @@ public class AppInstallerModule extends ReactContextBaseJavaModule {
         }
     }
 
-    private HttpURLConnection getFinalConnection(String initialUrl) throws Exception {
+    private void validateDownloadUrl(URL url, boolean isInitialHop) throws SecurityException {
+        if (url == null || !"https".equalsIgnoreCase(url.getProtocol())) {
+            throw new SecurityException("Atualização bloqueada: apenas conexões seguras HTTPS são permitidas.");
+        }
+
+        String host = url.getHost() != null ? url.getHost().toLowerCase(Locale.US) : "";
+        if (!ALLOWED_HOSTS.contains(host)) {
+            throw new SecurityException("Atualização bloqueada: domínio não autorizado (" + host + ").");
+        }
+
+        if (isInitialHop) {
+            String path = url.getPath() != null ? url.getPath().toLowerCase(Locale.US) : "";
+            boolean validRepoPath =
+                ("github.com".equals(host) && path.startsWith(ALLOWED_REPO_PREFIX)) ||
+                ("api.github.com".equals(host) && path.startsWith(ALLOWED_API_REPO_PREFIX));
+            if (!validRepoPath) {
+                throw new SecurityException("Atualização bloqueada: origem fora do repositório oficial RM Frotas.");
+            }
+        }
+    }
+
+    private HttpsURLConnection getFinalConnection(String initialUrl) throws Exception {
         String currentUrl = initialUrl;
         for (int i = 0; i < 8; i++) {
             URL url = new URL(currentUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            validateDownloadUrl(url, i == 0);
+
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) RM-Frotas-Mobile");
-            conn.setRequestProperty("Accept", "*/*");
+            conn.setRequestProperty("Accept", "application/octet-stream,*/*");
             conn.setConnectTimeout(30000);
             conn.setReadTimeout(60000);
             conn.setInstanceFollowRedirects(false);
@@ -96,7 +136,9 @@ public class AppInstallerModule extends ReactContextBaseJavaModule {
                 conn.disconnect();
                 if (location != null && !location.isEmpty()) {
                     URL base = new URL(currentUrl);
-                    currentUrl = new URL(base, location).toExternalForm();
+                    URL nextUrl = new URL(base, location);
+                    validateDownloadUrl(nextUrl, false);
+                    currentUrl = nextUrl.toExternalForm();
                     continue;
                 }
             }
@@ -110,23 +152,52 @@ public class AppInstallerModule extends ReactContextBaseJavaModule {
         throw new Exception("Muitos redirecionamentos ao baixar APK");
     }
 
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format(Locale.US, "%02x", b & 0xff));
+        }
+        return sb.toString();
+    }
+
     @ReactMethod
     public void downloadAndInstall(String downloadUrl, Promise promise) {
+        startDownloadAndInstall(downloadUrl, null, promise);
+    }
+
+    @ReactMethod
+    public void downloadAndInstallVerified(String downloadUrl, String expectedSha256, Promise promise) {
+        startDownloadAndInstall(downloadUrl, expectedSha256, promise);
+    }
+
+    private void startDownloadAndInstall(String downloadUrl, String expectedSha256, Promise promise) {
         if (downloadUrl == null || downloadUrl.isEmpty()) {
             promise.reject("ERR_NO_URL", "URL do APK não informada.");
+            return;
+        }
+
+        try {
+            validateDownloadUrl(new URL(downloadUrl), true);
+        } catch (Exception secErr) {
+            promise.reject("ERR_UNTRUSTED_URL", secErr.getMessage());
             return;
         }
 
         promise.resolve(true);
 
         new Thread(() -> {
-            HttpURLConnection connection = null;
+            HttpsURLConnection connection = null;
             InputStream input = null;
             FileOutputStream output = null;
+            File apkFile = null;
             try {
                 Context context = reactContext.getApplicationContext();
-                File cacheDir = context.getExternalCacheDir() != null ? context.getExternalCacheDir() : context.getCacheDir();
-                File apkFile = new File(cacheDir, "rm-frotas-update.apk");
+                File updatesDir = new File(context.getCacheDir(), "updates");
+                if (!updatesDir.exists() && !updatesDir.mkdirs()) {
+                    throw new Exception("Não foi possível preparar o diretório seguro de atualização.");
+                }
+
+                apkFile = new File(updatesDir, "rm-frotas-update.apk");
                 if (apkFile.exists()) {
                     apkFile.delete();
                 }
@@ -136,14 +207,24 @@ public class AppInstallerModule extends ReactContextBaseJavaModule {
                 int fileLength = connection.getContentLength();
                 input = connection.getInputStream();
                 output = new FileOutputStream(apkFile);
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
                 byte[] data = new byte[16384];
+                byte[] headerBytes = new byte[4];
+                int headerFilled = 0;
                 long total = 0;
                 int count;
                 int lastProgress = -1;
 
                 while ((count = input.read(data)) != -1) {
+                    if (headerFilled < 4) {
+                        int toCopy = Math.min(4 - headerFilled, count);
+                        System.arraycopy(data, 0, headerBytes, headerFilled, toCopy);
+                        headerFilled += toCopy;
+                    }
+
                     total += count;
+                    digest.update(data, 0, count);
                     output.write(data, 0, count);
 
                     if (fileLength > 0) {
@@ -166,7 +247,27 @@ public class AppInstallerModule extends ReactContextBaseJavaModule {
                 connection = null;
 
                 if (!apkFile.exists() || apkFile.length() < 1000000) {
+                    apkFile.delete();
                     throw new Exception("Arquivo APK incompleto (" + apkFile.length() + " bytes).");
+                }
+
+                // Verifica assinatura estrutural ZIP/APK (PK\x03\x04)
+                if (headerFilled < 4 || headerBytes[0] != 0x50 || headerBytes[1] != 0x4B ||
+                    headerBytes[2] != 0x03 || headerBytes[3] != 0x04) {
+                    apkFile.delete();
+                    throw new SecurityException("Arquivo baixado não é um pacote APK válido.");
+                }
+
+                if (expectedSha256 != null && !expectedSha256.trim().isEmpty()) {
+                    String cleanExpected = expectedSha256.trim().toLowerCase(Locale.US);
+                    if (cleanExpected.startsWith("sha256:")) {
+                        cleanExpected = cleanExpected.substring(7);
+                    }
+                    String actualSha256 = bytesToHex(digest.digest());
+                    if (!cleanExpected.equals(actualSha256)) {
+                        apkFile.delete();
+                        throw new SecurityException("Falha na verificação de integridade SHA-256 do APK.");
+                    }
                 }
 
                 WritableMap completedMap = Arguments.createMap();
@@ -201,6 +302,7 @@ public class AppInstallerModule extends ReactContextBaseJavaModule {
                     if (output != null) output.close();
                     if (input != null) input.close();
                     if (connection != null) connection.disconnect();
+                    if (apkFile != null && apkFile.exists()) apkFile.delete();
                 } catch (Exception ignored) {}
 
                 WritableMap errorMap = Arguments.createMap();

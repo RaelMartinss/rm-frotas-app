@@ -49,8 +49,15 @@ class BiometricService {
    */
   async isEnabled(): Promise<boolean> {
     const val = await storage.getItem(this.BIOMETRIC_KEY);
-    // Por padrão, se tiver biometria cadastrada no celular, podemos permitir
     return val === 'true';
+  }
+
+  /**
+   * Verifica se o usuário já definiu explicitamente sua preferência de biometria (ativada ou desativada).
+   */
+  async hasExplicitPreference(): Promise<boolean> {
+    const val = await storage.getItem(this.BIOMETRIC_KEY);
+    return val !== null;
   }
 
   /**
@@ -61,15 +68,14 @@ class BiometricService {
   }
 
   /**
-   * Executa a autenticação biométrica nativa (Android BiometricPrompt / iOS FaceID).
+   * Executa a autenticação biométrica nativa estrita (impressão digital / FaceID real, sem fallback para PIN do celular).
    */
   async authenticate(promptMessage = 'Confirme sua biometria para acessar o RM Frotas'): Promise<boolean> {
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage,
-        fallbackLabel: 'Entrar com senha',
         cancelLabel: 'Cancelar',
-        disableDeviceFallback: false,
+        disableDeviceFallback: true,
       });
 
       return result.success;

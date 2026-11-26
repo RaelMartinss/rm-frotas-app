@@ -24,6 +24,7 @@ import { SOSScreen } from './src/screens/SOSScreen';
 import { ChecklistScreen } from './src/screens/ChecklistScreen';
 import { RouteScreen } from './src/screens/RouteScreen';
 import { api } from './src/services/api.service';
+import { biometricService } from './src/services/biometric.service';
 import { deviceService } from './src/services/device.service';
 import { colors } from './src/theme/colors';
 import { User } from './src/types/auth';
@@ -45,20 +46,48 @@ export default function App() {
   const keyboardHeight = useKeyboardOffset();
 
   useEffect(() => {
+    api.setOnUnauthorized(() => {
+      setCurrentUser(null);
+      setActiveTrip(null);
+      setActiveModal(null);
+      setActiveTab('home');
+    });
+
     async function restoreSession() {
       try {
-        const storedUser = await api.getStoredUser();
-        if (storedUser) {
-          setCurrentUser(storedUser);
-          api.refresh().catch(() => {});
-          api.getCurrentTrip().then((s) => {
-            if (s?.trip) setActiveTrip(s.trip);
-            if (s?.pendingReceiptsCount !== undefined) {
-              setPendingCount(s.pendingReceiptsCount);
-            }
-          }).catch(() => {});
-          // Sincroniza versão e dados do dispositivo com o servidor
+        const [storedUser, hasRefresh] = await Promise.all([
+          api.getStoredUser(),
+          api.hasRefreshToken(),
+        ]);
+
+        if (storedUser && hasRefresh && storedUser.role === 'DRIVER') {
+          const refreshRes = await api.refreshDetailed(4500);
+          if (refreshRes.status === 'revoked' || refreshRes.status === 'no_token') {
+            await api.logout(true);
+            setCurrentUser(null);
+            return;
+          }
+
+          const activeUser =
+            refreshRes.status === 'ok' && refreshRes.data.user
+              ? refreshRes.data.user
+              : storedUser;
+
+          setCurrentUser(activeUser);
+          if (!activeUser.mustChangePassword) {
+            api
+              .getCurrentTrip()
+              .then((s) => {
+                if (s?.trip) setActiveTrip(s.trip);
+                if (s?.pendingReceiptsCount !== undefined) {
+                  setPendingCount(s.pendingReceiptsCount);
+                }
+              })
+              .catch(() => {});
+          }
           deviceService.syncDeviceTelemetry().catch(() => {});
+        } else if (storedUser) {
+          await api.logout(true);
         }
       } catch {
       } finally {
@@ -67,11 +96,18 @@ export default function App() {
     }
 
     restoreSession();
+
+    return () => {
+      api.setOnUnauthorized(null);
+    };
   }, []);
 
-  const handleLogout = async () => {
-    await api.logout();
+  const handleLogout = async (clearAll?: boolean) => {
+    const bioEnabled = await biometricService.isEnabled();
+    const shouldClearAll = clearAll === true || !bioEnabled;
+    await api.logout(shouldClearAll);
     setCurrentUser(null);
+    setActiveTrip(null);
     setActiveTab('home');
     setActiveModal(null);
   };
@@ -108,8 +144,16 @@ export default function App() {
 
   if (currentUser.mustChangePassword) {
     const handleSaveFirstPassword = async () => {
-      if (!firstAccessPass || firstAccessPass.length < 6) {
-        Alert.alert('Atenção', 'A nova senha deve ter no mínimo 6 caracteres.');
+      if (
+        !firstAccessPass ||
+        firstAccessPass.length < 8 ||
+        !/[A-Za-z]/.test(firstAccessPass) ||
+        !/\d/.test(firstAccessPass)
+      ) {
+        Alert.alert(
+          'Senha Fraca',
+          'A nova senha deve conter no mínimo 8 caracteres, com pelo menos uma letra e um número.'
+        );
         return;
       }
       if (firstAccessPass !== firstAccessConfirm) {
@@ -122,6 +166,15 @@ export default function App() {
         setFirstAccessPass('');
         setFirstAccessConfirm('');
         setCurrentUser({ ...currentUser, mustChangePassword: false });
+        api
+          .getCurrentTrip()
+          .then((s) => {
+            if (s?.trip) setActiveTrip(s.trip);
+            if (s?.pendingReceiptsCount !== undefined) {
+              setPendingCount(s.pendingReceiptsCount);
+            }
+          })
+          .catch(() => {});
         Alert.alert('Senha Atualizada', 'Sua nova senha pessoal foi configurada com sucesso!');
       } catch (err: any) {
         Alert.alert('Erro', err.message || 'Não foi possível redefinir sua senha.');
@@ -155,13 +208,13 @@ export default function App() {
                 </View>
                 <Text style={styles.firstAccessTitle}>Defina sua Nova Senha</Text>
                 <Text style={styles.firstAccessSubtitle}>
-                  Este é o seu primeiro acesso com uma senha temporária. Por segurança, crie uma senha pessoal de no mínimo 6 caracteres para continuar.
+                  Este é o seu primeiro acesso com uma senha temporária. Por segurança, crie uma senha pessoal de no mínimo 8 caracteres, com letras e números, para continuar.
                 </Text>
 
                 <Text style={styles.firstAccessLabel}>Nova senha</Text>
                 <TextInput
                   style={styles.firstAccessInput}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mín. 8 caracteres (letras e números)"
                   placeholderTextColor={colors.textDim}
                   secureTextEntry
                   value={firstAccessPass}
@@ -195,7 +248,7 @@ export default function App() {
 
                 <TouchableOpacity
                   style={styles.firstAccessLogoutBtn}
-                  onPress={handleLogout}
+                  onPress={() => handleLogout(true)}
                   disabled={savingFirstAccess}
                 >
                   <Text style={styles.firstAccessLogoutText}>Sair da conta</Text>
@@ -264,7 +317,7 @@ export default function App() {
           ) : activeTab === 'profile' ? (
             <ProfileScreen
               user={currentUser}
-              onLogout={handleLogout}
+              onLogout={(clearAll) => handleLogout(clearAll)}
               onNavigateToHistory={() => {
                 setHistoryInitialPending(false);
                 setActiveTab('history');
@@ -273,7 +326,7 @@ export default function App() {
           ) : (
             <HomeScreen
               user={currentUser}
-              onLogout={handleLogout}
+              onLogout={() => handleLogout()}
               onNavigateToFuel={() => setActiveModal('fuel')}
               onNavigateToTrip={() => setActiveModal('trip')}
               onNavigateToHistory={() => {

@@ -77,6 +77,17 @@ if (fs.existsSync(manifestPath)) {
     }
   }
 
+  // Remove permissões sensíveis desnecessárias injetadas por bibliotecas terceiras e desativa allowBackup
+  const blockedPermissions = [
+    'android.permission.RECORD_AUDIO',
+    'android.permission.SYSTEM_ALERT_WINDOW',
+  ];
+  for (const blocked of blockedPermissions) {
+    const permRegex = new RegExp(`\\s*<uses-permission[^>]*android:name="${blocked}"[^>]*/>`, 'g');
+    manifest = manifest.replace(permRegex, '');
+  }
+  manifest = manifest.replace(/android:allowBackup="true"/g, 'android:allowBackup="false"');
+
   // Injeta FileProvider se não existir
   if (!manifest.includes('androidx.core.content.FileProvider')) {
     const fileProviderXml = `
