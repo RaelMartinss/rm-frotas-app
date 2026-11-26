@@ -14,12 +14,13 @@ import { colors } from '../theme/colors';
 import {
   notificationService,
   DriverNotificationItem,
+  NotificationActionScreen,
 } from '../services/notification.service';
 
 interface NotificationCenterModalProps {
   visible: boolean;
   onClose: () => void;
-  onNavigateToScreen?: (screen: 'fuel' | 'trip' | 'profile' | 'route' | 'sos') => void;
+  onNavigateToScreen?: (screen: NotificationActionScreen) => void;
 }
 
 export function NotificationCenterModal({

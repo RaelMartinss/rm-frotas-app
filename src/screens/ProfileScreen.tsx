@@ -268,7 +268,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
     try {
       await api.updateProfile(editName.trim());
 
-      const updated = { ...profileUser, name: editName.trim(), email: editEmail.trim() || profileUser.email };
+      const updated = { ...profileUser, name: editName.trim() };
       setProfileUser(updated);
       setPhone(editPhone.trim() || phone);
       await storage.setItem(`rm_driver_phone_${user.id}`, editPhone.trim());
@@ -1074,15 +1074,12 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
             </View>
 
             <View style={styles.modalInputGroup}>
-              <Text style={styles.modalInputLabel}>E-mail</Text>
+              <Text style={styles.modalInputLabel}>E-mail de Acesso (gerenciado pela frota)</Text>
               <TextInput
-                style={styles.modalInput}
-                value={editEmail}
-                onChangeText={setEditEmail}
-                placeholder="seu.email@exemplo.com"
-                placeholderTextColor="#5A6872"
-                keyboardType="email-address"
-                autoCapitalize="none"
+                style={[styles.modalInput, { opacity: 0.65, backgroundColor: '#0B0F13' }]}
+                value={profileUser.email || editEmail}
+                editable={false}
+                selectTextOnFocus={false}
               />
             </View>
 

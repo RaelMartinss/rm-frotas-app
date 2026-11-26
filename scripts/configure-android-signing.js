@@ -58,6 +58,7 @@ if (fs.existsSync(manifestPath)) {
     'android.permission.ACCESS_COARSE_LOCATION',
     'android.permission.ACCESS_BACKGROUND_LOCATION',
     'android.permission.REQUEST_INSTALL_PACKAGES',
+    'android.permission.POST_NOTIFICATIONS',
   ];
 
   let addedCount = 0;

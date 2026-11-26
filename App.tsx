@@ -26,6 +26,7 @@ import { RouteScreen } from './src/screens/RouteScreen';
 import { api } from './src/services/api.service';
 import { biometricService } from './src/services/biometric.service';
 import { deviceService } from './src/services/device.service';
+import { notificationService } from './src/services/notification.service';
 import { colors } from './src/theme/colors';
 import { User } from './src/types/auth';
 
@@ -108,6 +109,7 @@ export default function App() {
               setCurrentUser(activeUser);
 
               if (!activeUser.mustChangePassword) {
+                notificationService.initializeForUser(activeUser.id).catch(() => {});
                 api
                   .getCurrentTrip(true)
                   .then((s) => {
@@ -115,6 +117,7 @@ export default function App() {
                     if (s?.pendingReceiptsCount !== undefined) {
                       setPendingCount(s.pendingReceiptsCount);
                     }
+                    notificationService.syncOperationalAlerts(activeUser.id, s).catch(() => {});
                   })
                   .catch(() => {});
               }
@@ -141,6 +144,9 @@ export default function App() {
   const handleLogout = async (clearAll?: boolean) => {
     const bioEnabled = await biometricService.isEnabled();
     const shouldClearAll = clearAll === true || !bioEnabled;
+    if (shouldClearAll) {
+      notificationService.resetSessionState();
+    }
     await api.logout(shouldClearAll);
     setCurrentUser(null);
     setActiveTrip(null);
@@ -153,8 +159,11 @@ export default function App() {
     setActiveTrip((prev: any) => ({ ...(prev || {}), ...tripData, status: 'IN_PROGRESS' }));
     setActiveModal(null);
     setActiveTab('home');
-    api.getCurrentTrip().then((s) => {
+    api.getCurrentTrip(true).then((s) => {
       if (s?.trip) setActiveTrip(s.trip);
+      if (currentUser?.id) {
+        notificationService.syncOperationalAlerts(currentUser.id, s).catch(() => {});
+      }
     }).catch(() => {});
   };
 
@@ -172,6 +181,9 @@ export default function App() {
         <LoginScreen
           onLoginSuccess={(user) => {
             setCurrentUser(user);
+            if (!user.mustChangePassword) {
+              notificationService.initializeForUser(user.id).catch(() => {});
+            }
             deviceService.syncDeviceTelemetry(true).catch(() => {});
           }}
         />

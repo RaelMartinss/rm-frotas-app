@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
 import { locationService } from '../services/location.service';
+import { notificationService } from '../services/notification.service';
 import { compressImageAsset } from '../utils/image-compressor';
 import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { IncidentCategory } from '../types/driver';
@@ -160,6 +161,14 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
         tripId: activeTrip?.id,
         vehicleId: activeTrip?.vehicle?.id,
       });
+
+      notificationService
+        .addNotification({
+          title: `Alerta SOS Registrado (${result.protocol})`,
+          body: `Ocorrência de ${selectedCategory} encaminhada para a central de operações.`,
+          type: 'ALERT',
+        })
+        .catch(() => {});
 
       Alert.alert(
         '🚨 Alerta Registrado!',

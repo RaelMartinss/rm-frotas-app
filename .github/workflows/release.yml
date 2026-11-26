@@ -84,10 +84,10 @@ jobs:
           files: release-assets/rm-frotas.apk
           body: |
             ✨ **Novidades e Correções da Versão:**
-            • Abertura instantânea do aplicativo e navegação ultrarrápida entre abas
-            • Economia drástica de internet móvel (4G) no histórico e compressão inteligente de comprovantes
-            • Segurança reforçada no login, validação biométrica por digital e encerramento seguro de sessão
-            • Otimização de bateria e rastreamento GPS durante viagens em rota
+            • Central de avisos operacionais integrada (novas escalas, CNH, comprovantes pendentes e SOS) e suporte a notificações Push
+            • Sincronização automática em segundo plano para checklists salvos no modo offline
+            • Proteção de credencial corporativa no perfil do motorista
+            • Melhorias de desempenho, abertura instantânea e economia de dados móveis (4G)
           generate_release_notes: false
           draft: false
           prerelease: false

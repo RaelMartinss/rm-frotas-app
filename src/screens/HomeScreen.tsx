@@ -105,6 +105,7 @@ export function HomeScreen({
         setDriverPhoto(data.driver.photoUrl);
         await storage.setItem('rm_driver_photo', data.driver.photoUrl);
       }
+      notificationService.syncOperationalAlerts(user.id, data).catch(() => {});
     } catch {
       // Mantém estado anterior em caso de erro silencioso
     } finally {
@@ -112,7 +113,7 @@ export function HomeScreen({
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user.id]);
 
   const handleSyncQueue = useCallback(async () => {
     if (syncingQueue) return;
@@ -321,6 +322,17 @@ export function HomeScreen({
       await locationService.stopTracking().catch(() => {});
       const res = await api.completeTrip(activeTrip.id, parsedKm);
       setCompleteModalOpen(false);
+      notificationService
+        .addNotification(
+          {
+            title: 'Viagem Concluída com Sucesso',
+            body: `Chegada registrada com odômetro final de ${parsedKm.toLocaleString('pt-BR')} km.`,
+            type: 'TRIP_COMPLETED',
+            actionScreen: 'history',
+          },
+          { userId: user.id }
+        )
+        .catch(() => {});
       Alert.alert('Viagem Concluída', res.message || 'O veículo foi liberado com sucesso!');
       if (onTripCompleted) onTripCompleted();
       loadData(true);
@@ -870,6 +882,7 @@ export function HomeScreen({
         onNavigateToScreen={(screen) => {
           if (screen === 'fuel') onNavigateToFuel();
           else if (screen === 'trip') onNavigateToTrip();
+          else if (screen === 'history') onNavigateToHistory();
           else if (screen === 'profile') onNavigateToProfile();
           else if (screen === 'route' && onNavigateToRoute) onNavigateToRoute();
           else if (screen === 'sos' && onNavigateToSOS) onNavigateToSOS();

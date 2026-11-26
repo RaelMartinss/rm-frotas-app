@@ -23,12 +23,19 @@ const CACHE_KEYS = {
   FUEL_HISTORY: 'rm_driver_fuel_history',
   PENDING_FUEL_QUEUE: 'rm_pending_fuel_queue',
   PENDING_SOS_QUEUE: 'rm_pending_sos_queue',
+  PENDING_CHECKLIST_QUEUE: 'rm_pending_checklist_queue',
 };
 
 interface QueuedOfflineSos {
   id: string;
   protocol: string;
   dto: ReportIncidentDTO;
+  timestamp: string;
+}
+
+interface QueuedOfflineChecklist {
+  tripId: string;
+  checklist: any;
   timestamp: string;
 }
 
@@ -76,6 +83,9 @@ class ApiService {
             storage.removeItem('rm_refresh_token'),
             storage.removeItem('rm_last_user'),
             storage.removeItem('rm_biometrics_enabled'),
+            storage.removeItem('rm_driver_notifications'),
+            storage.removeItem('rm_driver_notified_keys'),
+            storage.removeItem('rm_registered_push_token'),
           ]
         : []),
     ]).catch(() => {});
@@ -518,12 +528,22 @@ class ApiService {
   }
 
   /**
-   * Salva o checklist pré-viagem veicular
+   * Salva o checklist pré-viagem veicular com enfileiramento offline real e sincronização automática
    */
   async saveChecklist(
     tripId: string,
     checklist: TripChecklistDTO | any
   ): Promise<{ message: string; tripId: string; checklist?: any; offline?: boolean }> {
+    if (!networkService.isOnline) {
+      await this.enqueueOfflineChecklist(tripId, checklist);
+      return {
+        message: 'Checklist gravado na fila offline. Será sincronizado automaticamente ao reconectar.',
+        tripId,
+        checklist,
+        offline: true,
+      };
+    }
+
     try {
       const res = await this.authenticatedFetch('/driver-portal/checklist', {
         method: 'POST',
@@ -537,10 +557,12 @@ class ApiService {
 
       const result = await res.json();
       this.currentTripMemCache = null;
+      await this.removeOfflineChecklistFromQueue(tripId);
       return result;
     } catch (err: any) {
       const isNetworkErr =
         !networkService.isOnline ||
+        err?.name === 'AbortError' ||
         err?.message?.includes('Network') ||
         err?.message?.includes('Failed to fetch') ||
         err?.message?.includes('Abort');
@@ -549,13 +571,10 @@ class ApiService {
         throw err;
       }
 
-      // Salva no storage local apenas em caso de oscilação de sinal
-      try {
-        await storage.setItem(`rm_checklist_${tripId}`, JSON.stringify(checklist));
-      } catch {}
+      await this.enqueueOfflineChecklist(tripId, checklist);
 
       return {
-        message: 'Checklist salvo no dispositivo.',
+        message: 'Sem sinal no momento. Checklist salvo na fila offline e será sincronizado ao reconectar.',
         tripId,
         checklist,
         offline: true,
@@ -850,18 +869,56 @@ class ApiService {
   }
 
   /**
-   * Retorna a quantidade total de itens na fila offline (abastecimentos + SOS) aguardando sincronização
+   * Retorna a quantidade total de itens na fila offline (abastecimentos + SOS + checklists) aguardando sincronização
    */
   async getOfflineQueueCount(): Promise<number> {
     try {
-      const [fuelQueue, sosQueue] = await Promise.all([
+      const [fuelQueue, sosQueue, checklistQueue] = await Promise.all([
         this.getOfflineFuelQueue(),
         this.getOfflineSosQueue(),
+        this.getOfflineChecklistQueue(),
       ]);
-      return fuelQueue.length + sosQueue.length;
+      return fuelQueue.length + sosQueue.length + checklistQueue.length;
     } catch {
       return 0;
     }
+  }
+
+  /**
+   * Obtém a lista de checklists pré-viagem pendentes na fila offline
+   */
+  async getOfflineChecklistQueue(): Promise<QueuedOfflineChecklist[]> {
+    try {
+      const raw = await storage.getItem(CACHE_KEYS.PENDING_CHECKLIST_QUEUE);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async enqueueOfflineChecklist(tripId: string, checklist: any): Promise<void> {
+    try {
+      const queue = await this.getOfflineChecklistQueue();
+      const filtered = queue.filter((item) => item.tripId !== tripId);
+      filtered.push({
+        tripId,
+        checklist,
+        timestamp: new Date().toISOString(),
+      });
+      await storage.setItem(CACHE_KEYS.PENDING_CHECKLIST_QUEUE, JSON.stringify(filtered));
+      await storage.setItem(`rm_checklist_${tripId}`, JSON.stringify(checklist));
+    } catch {}
+  }
+
+  private async removeOfflineChecklistFromQueue(tripId: string): Promise<void> {
+    try {
+      const queue = await this.getOfflineChecklistQueue();
+      const remaining = queue.filter((item) => item.tripId !== tripId);
+      await storage.setItem(CACHE_KEYS.PENDING_CHECKLIST_QUEUE, JSON.stringify(remaining));
+      await storage.removeItem(`rm_checklist_${tripId}`);
+    } catch {}
   }
 
   /**
@@ -958,20 +1015,24 @@ class ApiService {
   }
 
   /**
-   * Sincroniza pendências salvas offline (abastecimentos + alertas SOS) com o servidor
+   * Sincroniza pendências salvas offline (abastecimentos + alertas SOS + checklists) com o servidor
    */
   async syncOfflineQueue(): Promise<{ synced: number; failed: number }> {
     try {
-      const [fuelQueue, sosQueue] = await Promise.all([
+      const [fuelQueue, sosQueue, checklistQueue] = await Promise.all([
         this.getOfflineFuelQueue(),
         this.getOfflineSosQueue(),
+        this.getOfflineChecklistQueue(),
       ]);
-      if (fuelQueue.length === 0 && sosQueue.length === 0) return { synced: 0, failed: 0 };
+      if (fuelQueue.length === 0 && sosQueue.length === 0 && checklistQueue.length === 0) {
+        return { synced: 0, failed: 0 };
+      }
 
       let synced = 0;
       let failed = 0;
       const remainingFuel: QueuedOfflineFuel[] = [];
       const remainingSos: QueuedOfflineSos[] = [];
+      const remainingChecklists: QueuedOfflineChecklist[] = [];
 
       for (const item of fuelQueue) {
         try {
@@ -1015,7 +1076,6 @@ class ApiService {
           if (res.ok) {
             synced++;
           } else if (res.status >= 400 && res.status < 500) {
-            // Erro definitivo de validação: descarta para não travar fila infinita
             failed++;
           } else {
             remainingSos.push(sosItem);
@@ -1027,9 +1087,41 @@ class ApiService {
         }
       }
 
+      for (const chkItem of checklistQueue) {
+        try {
+          const res = await this.authenticatedFetch(
+            '/driver-portal/checklist',
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                tripId: chkItem.tripId,
+                checklist: chkItem.checklist,
+              }),
+            },
+            20000
+          );
+
+          if (res.ok) {
+            synced++;
+            await storage.removeItem(`rm_checklist_${chkItem.tripId}`).catch(() => {});
+          } else if (res.status >= 400 && res.status < 500) {
+            failed++;
+            await storage.removeItem(`rm_checklist_${chkItem.tripId}`).catch(() => {});
+          } else {
+            remainingChecklists.push(chkItem);
+            failed++;
+          }
+        } catch {
+          remainingChecklists.push(chkItem);
+          failed++;
+        }
+      }
+
+      this.currentTripMemCache = null;
       await Promise.all([
         storage.setItem(CACHE_KEYS.PENDING_FUEL_QUEUE, JSON.stringify(remainingFuel)),
         storage.setItem(CACHE_KEYS.PENDING_SOS_QUEUE, JSON.stringify(remainingSos)),
+        storage.setItem(CACHE_KEYS.PENDING_CHECKLIST_QUEUE, JSON.stringify(remainingChecklists)),
       ]);
       return { synced, failed };
     } catch {
@@ -1232,6 +1324,22 @@ class ApiService {
     }
 
     return result;
+  }
+
+  /**
+   * Registra o token de Push Notification (FCM / Expo) no backend
+   */
+  async registerPushToken(token: string): Promise<boolean> {
+    if (!token) return false;
+    try {
+      const res = await this.authenticatedFetch('/driver-portal/push-token', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   /**
