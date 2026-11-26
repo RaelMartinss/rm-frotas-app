@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
 import { locationService } from '../services/location.service';
+import { compressImageAsset } from '../utils/image-compressor';
 import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { IncidentCategory } from '../types/driver';
 
@@ -128,14 +129,13 @@ export function SOSScreen({ onBack, onSuccess, activeTrip }: SOSScreenProps) {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.6,
-        base64: true,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        setPhotoUri(asset.uri);
-        setPhotoBase64(asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : null);
+        const compressed = await compressImageAsset(result.assets[0], { maxWidth: 1280, quality: 0.65 });
+        setPhotoUri(compressed.uri);
+        setPhotoBase64(compressed.base64DataUrl);
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível acessar a câmera do dispositivo.');

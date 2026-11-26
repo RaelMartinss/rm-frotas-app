@@ -30,3 +30,15 @@ if (fs.existsSync(updateServicePath)) {
   fs.writeFileSync(updateServicePath, content, 'utf8');
   console.log('[inject-version] app-update.service.ts atualizado.');
 }
+
+// 3. Atualiza CURRENT_BUILD_NUMBER em src/services/device.service.ts
+const deviceServicePath = path.join(__dirname, '..', 'src', 'services', 'device.service.ts');
+if (fs.existsSync(deviceServicePath)) {
+  let deviceContent = fs.readFileSync(deviceServicePath, 'utf8');
+  deviceContent = deviceContent.replace(
+    /export const CURRENT_BUILD_NUMBER = \d+;/,
+    `export const CURRENT_BUILD_NUMBER = ${buildNum};`
+  );
+  fs.writeFileSync(deviceServicePath, deviceContent, 'utf8');
+  console.log('[inject-version] device.service.ts atualizado.');
+}

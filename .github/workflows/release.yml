@@ -84,10 +84,10 @@ jobs:
           files: release-assets/rm-frotas.apk
           body: |
             ✨ **Novidades e Correções da Versão:**
-            • Correção do teclado sobrepondo o campo de senha na tela de Login (auto-scroll, topo compacto e salto rápido entre campos)
-            • Ajuste de visibilidade dos campos com teclado aberto nos modais de perfil, finalização de viagem e formulários operacionais
-            • Rótulo de acesso rápido no Android atualizado para Biometria/Digital
-            • Melhorias gerais de usabilidade e estabilidade no Android 15+ Edge-to-Edge
+            • Abertura instantânea do aplicativo e navegação ultrarrápida entre abas
+            • Economia drástica de internet móvel (4G) no histórico e compressão inteligente de comprovantes
+            • Segurança reforçada no login, validação biométrica por digital e encerramento seguro de sessão
+            • Otimização de bateria e rastreamento GPS durante viagens em rota
           generate_release_notes: false
           draft: false
           prerelease: false

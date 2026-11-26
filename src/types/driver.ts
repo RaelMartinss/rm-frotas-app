@@ -11,6 +11,7 @@ export interface DriverProfile {
   isCnhExpired: boolean;
   status: string;
   photoUrl?: string | null;
+  hasPhoto?: boolean;
 }
 
 export interface DriverVehicle {
@@ -123,6 +124,7 @@ export interface DriverFuelHistoryItem {
   gasStation: string | null;
   fullTank: boolean;
   receiptUrl: string | null;
+  hasReceipt?: boolean;
   notes: string | null;
   fueledAt: string;
   isPendingReceipt: boolean;

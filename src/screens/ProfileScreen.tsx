@@ -24,6 +24,7 @@ import { biometricService } from '../services/biometric.service';
 import { api } from '../services/api.service';
 import { storage } from '../services/storage.service';
 import { appUpdateService, CURRENT_APP_VERSION, UpdateDownloadState } from '../services/app-update.service';
+import { compressImageAsset } from '../utils/image-compressor';
 import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { User } from '../types/auth';
 import { DriverPortalSummary } from '../types/driver';
@@ -154,6 +155,15 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
       if (cached) setPhotoUrl(cached);
     });
 
+    api.getCachedCurrentTrip().then((cached) => {
+      if (cached) {
+        setSummary(cached);
+        if (cached.driver?.photoUrl) {
+          setPhotoUrl(cached.driver.photoUrl);
+        }
+      }
+    }).catch(() => {});
+
     api.getCurrentTrip().then((sum) => {
       if (sum) {
         setSummary(sum);
@@ -199,26 +209,23 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.7,
-            base64: true,
+            quality: 0.8,
           })
         : await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.7,
-            base64: true,
+            quality: 0.8,
           });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const base64Uri = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-
         setUpdatingPhoto(true);
         try {
-          await api.updateProfilePhoto(base64Uri);
-          setPhotoUrl(base64Uri);
-          await storage.setItem('rm_driver_photo', base64Uri);
+          const { base64DataUrl } = await compressImageAsset(asset, { maxWidth: 512, quality: 0.7 });
+          await api.updateProfilePhoto(base64DataUrl);
+          setPhotoUrl(base64DataUrl);
+          await storage.setItem('rm_driver_photo', base64DataUrl);
           Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
         } catch (err: any) {
           Alert.alert('Erro', err.message || 'Não foi possível salvar a foto no servidor.');
@@ -339,7 +346,7 @@ export function ProfileScreen({ user, onLogout, onNavigateToHistory }: ProfileSc
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
     try {
-      const res = await appUpdateService.checkForUpdates();
+      const res = await appUpdateService.checkForUpdates(true);
       if (res.hasUpdate) {
         Alert.alert(
           `Atualização Disponível (v${res.latestVersion})`,

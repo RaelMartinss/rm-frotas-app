@@ -82,11 +82,24 @@ export function HomeScreen({
   });
 
   const loadData = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      // SWR: hidrata primeiro frame do cache em RAM/disco sem exibir spinner bloqueante
+      const cached = await api.getCachedCurrentTrip();
+      if (cached) {
+        setSummary(cached);
+        if (cached.driver?.photoUrl) {
+          setDriverPhoto(cached.driver.photoUrl);
+        }
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    }
 
     try {
-      const data = await api.getCurrentTrip();
+      const data = await api.getCurrentTrip(isRefresh);
       setSummary(data);
       if (data?.driver?.photoUrl) {
         setDriverPhoto(data.driver.photoUrl);

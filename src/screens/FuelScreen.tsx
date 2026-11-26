@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
 import { networkService } from '../services/network.service';
+import { compressImageAsset } from '../utils/image-compressor';
 import { useKeyboardOffset } from '../hooks/useKeyboardOffset';
 import { DriverFuelDTO } from '../types/driver';
 
@@ -99,15 +100,12 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.7,
-        base64: true,
+        quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        setReceiptPhotoUri(asset.uri);
-        if (asset.base64) {
-          setReceiptBase64(`data:image/jpeg;base64,${asset.base64}`);
-        }
+        const compressed = await compressImageAsset(result.assets[0], { maxWidth: 1280, quality: 0.65 });
+        setReceiptPhotoUri(compressed.uri);
+        setReceiptBase64(compressed.base64DataUrl);
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível abrir a câmera.');
@@ -124,15 +122,12 @@ export function FuelScreen({ onBack, onSuccess, defaultVehicle }: FuelScreenProp
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.7,
-        base64: true,
+        quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        setReceiptPhotoUri(asset.uri);
-        if (asset.base64) {
-          setReceiptBase64(`data:image/jpeg;base64,${asset.base64}`);
-        }
+        const compressed = await compressImageAsset(result.assets[0], { maxWidth: 1280, quality: 0.65 });
+        setReceiptPhotoUri(compressed.uri);
+        setReceiptBase64(compressed.base64DataUrl);
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível abrir a galeria.');

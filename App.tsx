@@ -36,14 +36,31 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const [visitedTabs, setVisitedTabs] = useState<{ home: boolean; history: boolean; profile: boolean }>({
+    home: true,
+    history: false,
+    profile: false,
+  });
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [activeTrip, setActiveTrip] = useState<any>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [historyInitialPending, setHistoryInitialPending] = useState(false);
+  const [historyActivationTick, setHistoryActivationTick] = useState(0);
   const [firstAccessPass, setFirstAccessPass] = useState('');
   const [firstAccessConfirm, setFirstAccessConfirm] = useState('');
   const [savingFirstAccess, setSavingFirstAccess] = useState(false);
   const keyboardHeight = useKeyboardOffset();
+
+  const switchTab = (tab: AppTab, pendingFilter?: boolean) => {
+    if (pendingFilter !== undefined) {
+      setHistoryInitialPending(pendingFilter);
+    }
+    setVisitedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
+    if (tab === 'history') {
+      setHistoryActivationTick((t) => t + 1);
+    }
+    setActiveTab(tab);
+  };
 
   useEffect(() => {
     api.setOnUnauthorized(() => {
@@ -51,41 +68,60 @@ export default function App() {
       setActiveTrip(null);
       setActiveModal(null);
       setActiveTab('home');
+      setVisitedTabs({ home: true, history: false, profile: false });
     });
 
     async function restoreSession() {
       try {
-        const [storedUser, hasRefresh] = await Promise.all([
+        const [storedUser, hasRefresh, cachedSummary] = await Promise.all([
           api.getStoredUser(),
           api.hasRefreshToken(),
+          api.getCachedCurrentTrip(),
         ]);
 
         if (storedUser && hasRefresh && storedUser.role === 'DRIVER') {
-          const refreshRes = await api.refreshDetailed(4500);
-          if (refreshRes.status === 'revoked' || refreshRes.status === 'no_token') {
-            await api.logout(true);
-            setCurrentUser(null);
-            return;
+          // Cold Start Otimista (< 150ms): hidrata imediatamente com cache local e valida sessão em background
+          setCurrentUser(storedUser);
+          if (!storedUser.mustChangePassword && cachedSummary) {
+            if (cachedSummary.trip) setActiveTrip(cachedSummary.trip);
+            if (cachedSummary.pendingReceiptsCount !== undefined) {
+              setPendingCount(cachedSummary.pendingReceiptsCount);
+            }
           }
+          setInitializing(false);
 
-          const activeUser =
-            refreshRes.status === 'ok' && refreshRes.data.user
-              ? refreshRes.data.user
-              : storedUser;
+          // Revalidação silenciosa em background (se 401/403 revogado, onUnauthorized derruba imediatamente)
+          api
+            .refreshDetailed(8000)
+            .then(async (refreshRes) => {
+              if (refreshRes.status === 'revoked' || refreshRes.status === 'no_token') {
+                await api.logout(true);
+                setCurrentUser(null);
+                setActiveTrip(null);
+                return;
+              }
 
-          setCurrentUser(activeUser);
-          if (!activeUser.mustChangePassword) {
-            api
-              .getCurrentTrip()
-              .then((s) => {
-                if (s?.trip) setActiveTrip(s.trip);
-                if (s?.pendingReceiptsCount !== undefined) {
-                  setPendingCount(s.pendingReceiptsCount);
-                }
-              })
-              .catch(() => {});
-          }
-          deviceService.syncDeviceTelemetry().catch(() => {});
+              const activeUser =
+                refreshRes.status === 'ok' && refreshRes.data.user
+                  ? refreshRes.data.user
+                  : storedUser;
+              setCurrentUser(activeUser);
+
+              if (!activeUser.mustChangePassword) {
+                api
+                  .getCurrentTrip(true)
+                  .then((s) => {
+                    setActiveTrip(s?.trip || null);
+                    if (s?.pendingReceiptsCount !== undefined) {
+                      setPendingCount(s.pendingReceiptsCount);
+                    }
+                  })
+                  .catch(() => {});
+              }
+              deviceService.syncDeviceTelemetry().catch(() => {});
+            })
+            .catch(() => {});
+          return;
         } else if (storedUser) {
           await api.logout(true);
         }
@@ -109,6 +145,7 @@ export default function App() {
     setCurrentUser(null);
     setActiveTrip(null);
     setActiveTab('home');
+    setVisitedTabs({ home: true, history: false, profile: false });
     setActiveModal(null);
   };
 
@@ -264,87 +301,98 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <View style={styles.appContainer}>
-        {/* CORPO DA TELA CONFORME ABA / MODAL ATIVO */}
+        {/* CORPO DA TELA: ABAS PRINCIPAIS KEEP-ALIVE (LAZY MOUNT) + MODAIS OPERACIONAIS */}
         <View style={styles.screenBody}>
-          {activeModal === 'fuel' ? (
+          {activeModal === 'fuel' && (
             <FuelScreen
               onBack={() => setActiveModal(null)}
               onSuccess={() => {
                 setActiveModal(null);
-                api.getCurrentTrip().then((s) => {
+                api.getCurrentTrip(true).then((s) => {
                   if (s?.trip) setActiveTrip(s.trip);
+                  if (s?.pendingReceiptsCount !== undefined) setPendingCount(s.pendingReceiptsCount);
                 }).catch(() => {});
               }}
               defaultVehicle={activeTrip?.vehicle}
             />
-          ) : activeModal === 'trip' ? (
+          )}
+          {activeModal === 'trip' && (
             <TripScreen
               onBack={() => setActiveModal(null)}
               onTripStarted={handleTripStarted}
               trip={activeTrip}
               defaultVehicle={activeTrip?.vehicle}
             />
-          ) : activeModal === 'sos' ? (
+          )}
+          {activeModal === 'sos' && (
             <SOSScreen
               onBack={() => setActiveModal(null)}
               onSuccess={() => {
-                api.getCurrentTrip().then((s) => {
+                api.getCurrentTrip(true).then((s) => {
                   if (s?.trip) setActiveTrip(s.trip);
                 }).catch(() => {});
               }}
               activeTrip={activeTrip}
             />
-          ) : activeModal === 'checklist' ? (
+          )}
+          {activeModal === 'checklist' && (
             <ChecklistScreen
               onBack={() => setActiveModal(null)}
               onSuccess={() => {
-                api.getCurrentTrip().then((s) => {
+                api.getCurrentTrip(true).then((s) => {
                   if (s?.trip) setActiveTrip(s.trip);
                 }).catch(() => {});
               }}
               activeTrip={activeTrip}
             />
-          ) : activeModal === 'route' ? (
+          )}
+          {activeModal === 'route' && (
             <RouteScreen
               onBack={() => setActiveModal(null)}
               activeTrip={activeTrip}
             />
-          ) : activeTab === 'history' ? (
-            <HistoryScreen
-              initialTab={historyInitialPending ? 'fuel' : 'trips'}
-              initialFilterPendingOnly={historyInitialPending}
-            />
-          ) : activeTab === 'profile' ? (
-            <ProfileScreen
-              user={currentUser}
-              onLogout={(clearAll) => handleLogout(clearAll)}
-              onNavigateToHistory={() => {
-                setHistoryInitialPending(false);
-                setActiveTab('history');
-              }}
-            />
-          ) : (
+          )}
+
+          {/* Abas principais permanecem montadas em memória (transição 0ms sem destruir scroll/GPS) */}
+          <View style={{ flex: 1, display: !activeModal && activeTab === 'home' ? 'flex' : 'none' }}>
             <HomeScreen
               user={currentUser}
               onLogout={() => handleLogout()}
               onNavigateToFuel={() => setActiveModal('fuel')}
               onNavigateToTrip={() => setActiveModal('trip')}
-              onNavigateToHistory={() => {
-                setHistoryInitialPending(true);
-                setActiveTab('history');
-              }}
-              onNavigateToProfile={() => setActiveTab('profile')}
+              onNavigateToHistory={() => switchTab('history', true)}
+              onNavigateToProfile={() => switchTab('profile')}
               onNavigateToSOS={() => setActiveModal('sos')}
               onNavigateToChecklist={() => setActiveModal('checklist')}
               onNavigateToRoute={() => setActiveModal('route')}
               activeTrip={activeTrip}
               onTripCompleted={() => {
                 setActiveTrip(null);
-                api.getCurrentTrip().then((s) => {
+                api.getCurrentTrip(true).then((s) => {
                   setActiveTrip(s?.trip || null);
                 }).catch(() => {});
               }}
             />
+          </View>
+
+          {visitedTabs.history && (
+            <View style={{ flex: 1, display: !activeModal && activeTab === 'history' ? 'flex' : 'none' }}>
+              <HistoryScreen
+                initialTab={historyInitialPending ? 'fuel' : 'trips'}
+                initialFilterPendingOnly={historyInitialPending}
+                activationTick={historyActivationTick}
+              />
+            </View>
+          )}
+
+          {visitedTabs.profile && (
+            <View style={{ flex: 1, display: !activeModal && activeTab === 'profile' ? 'flex' : 'none' }}>
+              <ProfileScreen
+                user={currentUser}
+                onLogout={(clearAll) => handleLogout(clearAll)}
+                onNavigateToHistory={() => switchTab('history', false)}
+              />
+            </View>
           )}
         </View>
 
@@ -354,7 +402,7 @@ export default function App() {
             {/* 1. INÍCIO */}
             <TouchableOpacity
               style={styles.navItem}
-              onPress={() => setActiveTab('home')}
+              onPress={() => switchTab('home')}
               activeOpacity={0.8}
             >
               <Ionicons
@@ -376,10 +424,7 @@ export default function App() {
             {/* 2. HISTÓRICO */}
             <TouchableOpacity
               style={styles.navItem}
-              onPress={() => {
-                setHistoryInitialPending(false);
-                setActiveTab('history');
-              }}
+              onPress={() => switchTab('history', false)}
               activeOpacity={0.8}
             >
               <View style={styles.historyIconWrapper}>
@@ -408,7 +453,7 @@ export default function App() {
             {/* 3. PERFIL */}
             <TouchableOpacity
               style={styles.navItem}
-              onPress={() => setActiveTab('profile')}
+              onPress={() => switchTab('profile')}
               activeOpacity={0.8}
             >
               <Ionicons

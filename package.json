@@ -1,6 +1,6 @@
 {
   "name": "rm-frotas-app",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -10,6 +10,7 @@
     "expo": "~57.0.27",
     "expo-file-system": "~57.0.7",
     "expo-font": "~57.0.4",
+    "expo-image-manipulator": "~57.0.23",
     "expo-image-picker": "~57.0.20",
     "expo-local-authentication": "~57.0.3",
     "expo-location": "~57.0.20",

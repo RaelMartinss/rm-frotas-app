@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  FlatList,
   StatusBar,
   RefreshControl,
   ActivityIndicator,
@@ -19,18 +20,21 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { api } from '../services/api.service';
+import { compressImageAsset } from '../utils/image-compressor';
 import { DriverHistoryItem, DriverFuelHistoryItem } from '../types/driver';
 
 interface HistoryScreenProps {
   onBack?: () => void;
   initialTab?: 'trips' | 'fuel';
   initialFilterPendingOnly?: boolean;
+  activationTick?: number;
 }
 
 export function HistoryScreen({
   onBack,
   initialTab = 'trips',
   initialFilterPendingOnly = false,
+  activationTick,
 }: HistoryScreenProps) {
   const [activeTab, setActiveTab] = useState<'trips' | 'fuel'>(initialTab);
   const [loading, setLoading] = useState(true);
@@ -43,6 +47,7 @@ export function HistoryScreen({
 
   // Modais de comprovante
   const [selectedFuel, setSelectedFuel] = useState<any>(null);
+  const [loadingReceipt, setLoadingReceipt] = useState(false);
   const [viewReceiptModalOpen, setViewReceiptModalOpen] = useState(false);
   const [fullImageModalOpen, setFullImageModalOpen] = useState(false);
   const [attachModalOpen, setAttachModalOpen] = useState(false);
@@ -51,9 +56,57 @@ export function HistoryScreen({
   const [attachNotes, setAttachNotes] = useState('');
   const [savingReceipt, setSavingReceipt] = useState(false);
 
+  const mapOfflineQueue = useCallback((queueData: any[]): DriverFuelHistoryItem[] => {
+    return (queueData || []).map((item) => {
+      const p = item.dto;
+      const liters = p?.liters || 0;
+      const price = p?.pricePerLiter || 0;
+      const totalCost = Number((liters * price).toFixed(2));
+      return {
+        id: item.idempotencyKey || item.id || `offline_${Date.now()}`,
+        vehicleId: p?.vehicleId || '',
+        vehiclePlate: p?.vehiclePlate || '---',
+        vehicleModel: p?.vehicleModel || '',
+        fuelType: p?.fuelType || 'DIESEL',
+        liters,
+        pricePerUnit: price,
+        totalCost,
+        odometerAtFueling: p?.currentKm || 0,
+        gasStation: p?.gasStation || null,
+        fullTank: !!p?.fullTank,
+        receiptUrl: p?.receiptUrl || null,
+        hasReceipt: Boolean(p?.receiptUrl),
+        notes: p?.notes || null,
+        fueledAt: item.timestamp || new Date().toISOString(),
+        isPendingReceipt: false,
+        isOfflineQueueItem: true,
+        offlineStatus: item.status || 'PENDING',
+        offlineActionId: item.idempotencyKey || item.id,
+        offlineError: item.error || null,
+      };
+    });
+  }, []);
+
   const loadData = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      // SWR: carrega instantaneamente do cache em RAM/disco no primeiro frame
+      const [cachedTrips, cachedFuel, cachedQueue] = await Promise.all([
+        api.getCachedHistory(),
+        api.getCachedFuelHistory(),
+        api.getOfflineFuelQueue(),
+      ]);
+
+      if (cachedTrips.length > 0 || cachedFuel.length > 0 || cachedQueue.length > 0) {
+        setTrips(cachedTrips);
+        setFuelRecords(cachedFuel);
+        setOfflineFuelRecords(mapOfflineQueue(cachedQueue));
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    }
 
     try {
       const [tripsData, fuelData, queueData] = await Promise.all([
@@ -63,50 +116,49 @@ export function HistoryScreen({
       ]);
       setTrips(tripsData);
       setFuelRecords(fuelData);
-
-      const mappedOffline: DriverFuelHistoryItem[] = (queueData || []).map((item) => {
-        const p = item.dto;
-        const liters = p?.liters || 0;
-        const price = p?.pricePerLiter || 0;
-        const totalCost = Number((liters * price).toFixed(2));
-        return {
-          id: item.idempotencyKey || item.id || `offline_${Date.now()}`,
-          vehicleId: p?.vehicleId || '',
-          vehiclePlate: p?.vehiclePlate || '---',
-          vehicleModel: p?.vehicleModel || '',
-          fuelType: p?.fuelType || 'DIESEL',
-          liters,
-          pricePerUnit: price,
-          totalCost,
-          odometerAtFueling: p?.currentKm || 0,
-          gasStation: p?.gasStation || null,
-          fullTank: !!p?.fullTank,
-          receiptUrl: p?.receiptUrl || null,
-          notes: p?.notes || null,
-          fueledAt: item.timestamp || new Date().toISOString(),
-          isPendingReceipt: false,
-          isOfflineQueueItem: true,
-          offlineStatus: item.status || 'PENDING',
-          offlineActionId: item.idempotencyKey || item.id,
-          offlineError: item.error || null,
-        };
-      });
-      setOfflineFuelRecords(mappedOffline);
+      setOfflineFuelRecords(mapOfflineQueue(queueData));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [mapOfflineQueue]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Contadores dinâmicos reais (sem valores mockados)
-  const allFuelRecords = [...offlineFuelRecords, ...fuelRecords];
+  // Sincroniza aba/filtro quando o usuário navega para Histórico a partir do card de pendências (aba Keep-Alive)
+  useEffect(() => {
+    if (!activationTick) return;
+    setActiveTab(initialTab);
+    setFilterPendingOnly(initialFilterPendingOnly);
+    loadData(false);
+  }, [activationTick, initialTab, initialFilterPendingOnly, loadData]);
+
+  const isMissingReceipt = useCallback((f: DriverFuelHistoryItem) => {
+    if (f.isOfflineQueueItem) return false;
+    if (typeof f.isPendingReceipt === 'boolean') return f.isPendingReceipt;
+    return !f.hasReceipt && !f.receiptUrl;
+  }, []);
+
+  // Contadores dinâmicos reais memoizados
+  const allFuelRecords = useMemo(
+    () => [...offlineFuelRecords, ...fuelRecords],
+    [offlineFuelRecords, fuelRecords]
+  );
+  const filteredFuelRecords = useMemo(
+    () =>
+      filterPendingOnly
+        ? allFuelRecords.filter((f) => f.isOfflineQueueItem || isMissingReceipt(f))
+        : allFuelRecords,
+    [allFuelRecords, filterPendingOnly, isMissingReceipt]
+  );
   const tripsCount = trips.length;
   const fuelCount = allFuelRecords.length;
-  const receiptsPending = fuelRecords.filter((f) => f.isPendingReceipt || !f.receiptUrl).length;
+  const receiptsPending = useMemo(
+    () => fuelRecords.filter((f) => isMissingReceipt(f)).length,
+    [fuelRecords, isMissingReceipt]
+  );
   const offlinePending = offlineFuelRecords.length;
   const pendingCount = receiptsPending + offlinePending;
 
@@ -246,9 +298,23 @@ export function HistoryScreen({
     setAttachModalOpen(true);
   };
 
-  const handleOpenViewModal = (fuel: any) => {
+  const handleOpenViewModal = async (fuel: any) => {
     setSelectedFuel(fuel);
     setViewReceiptModalOpen(true);
+
+    if (!fuel.receiptUrl && fuel.id && !fuel.isOfflineQueueItem) {
+      setLoadingReceipt(true);
+      try {
+        const fetchedUrl = await api.getFuelReceipt(fuel.id);
+        if (fetchedUrl) {
+          setSelectedFuel((prev: any) =>
+            prev && prev.id === fuel.id ? { ...prev, receiptUrl: fetchedUrl } : prev
+          );
+        }
+      } finally {
+        setLoadingReceipt(false);
+      }
+    }
   };
 
   const takePhoto = async () => {
@@ -261,14 +327,12 @@ export function HistoryScreen({
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.7,
-        base64: true,
+        quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setAttachPhotoUri(result.assets[0].uri);
-        if (result.assets[0].base64) {
-          setAttachBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-        }
+        const compressed = await compressImageAsset(result.assets[0], { maxWidth: 1280, quality: 0.65 });
+        setAttachPhotoUri(compressed.uri);
+        setAttachBase64(compressed.base64DataUrl);
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível abrir a câmera.');
@@ -285,14 +349,12 @@ export function HistoryScreen({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.7,
-        base64: true,
+        quality: 0.8,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setAttachPhotoUri(result.assets[0].uri);
-        if (result.assets[0].base64) {
-          setAttachBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-        }
+        const compressed = await compressImageAsset(result.assets[0], { maxWidth: 1280, quality: 0.65 });
+        setAttachPhotoUri(compressed.uri);
+        setAttachBase64(compressed.base64DataUrl);
       }
     } catch {
       Alert.alert('Erro', 'Não foi possível abrir a galeria.');
@@ -375,61 +437,65 @@ export function HistoryScreen({
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadData(true)}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-      >
-        {activeTab === 'trips' ? (
-          // LISTA DE VIAGENS
-          <View style={styles.list}>
-            {loading && trips.length === 0 ? (
+      {activeTab === 'trips' ? (
+        <FlatList
+          key="trips-list"
+          data={trips}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.scrollContent}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadData(true)}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          renderItem={({ item: t }) => {
+            const meta = getTripCardPresentation(t);
+            return (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.plateBadge}>
+                    <Text style={styles.plateText}>{t.vehicle || '---'}</Text>
+                  </View>
+                  <View style={[styles.statusBadge, meta.badgeStyle]}>
+                    <Text style={[styles.statusText, { color: meta.badgeTextColor }]}>
+                      {meta.badgeLabel}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.tripRoute}>
+                  <Text style={styles.routeCity} numberOfLines={1}>
+                    {t.origin}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+                  <Text style={styles.routeCity} numberOfLines={1}>
+                    {t.destination}
+                  </Text>
+                </View>
+
+                <View style={styles.cardFooter}>
+                  <Text style={styles.dateText}>{meta.leftMeta}</Text>
+                  <Text style={[styles.kmText, { color: meta.rightMetaColor }]}>
+                    {meta.rightMeta}
+                  </Text>
+                </View>
+              </View>
+            );
+          }}
+          ListEmptyComponent={
+            loading ? (
               <View style={styles.emptyCard}>
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.emptyDesc}>Carregando histórico de viagens...</Text>
               </View>
-            ) : trips.length > 0 ? (
-              trips.map((t) => {
-                const meta = getTripCardPresentation(t);
-                return (
-                  <View key={t.id} style={styles.card}>
-                    <View style={styles.cardHeader}>
-                      <View style={styles.plateBadge}>
-                        <Text style={styles.plateText}>{t.vehicle || '---'}</Text>
-                      </View>
-                      <View style={[styles.statusBadge, meta.badgeStyle]}>
-                        <Text style={[styles.statusText, { color: meta.badgeTextColor }]}>
-                          {meta.badgeLabel}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* ROTA */}
-                    <View style={styles.tripRoute}>
-                      <Text style={styles.routeCity} numberOfLines={1}>
-                        {t.origin}
-                      </Text>
-                      <Ionicons name="arrow-forward" size={14} color={colors.primary} />
-                      <Text style={styles.routeCity} numberOfLines={1}>
-                        {t.destination}
-                      </Text>
-                    </View>
-
-                    <View style={styles.cardFooter}>
-                      <Text style={styles.dateText}>{meta.leftMeta}</Text>
-                      <Text style={[styles.kmText, { color: meta.rightMetaColor }]}>
-                        {meta.rightMeta}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
             ) : (
               <View style={styles.emptyCard}>
                 <Ionicons name="car-outline" size={38} color={colors.textDim} />
@@ -438,13 +504,30 @@ export function HistoryScreen({
                   Você ainda não possui viagens concluídas, programadas ou em rota no histórico.
                 </Text>
               </View>
-            )}
-          </View>
-        ) : (
-          // LISTA DE ABASTECIMENTOS
-          <View style={styles.list}>
-            {/* Header com filtro de pendência */}
-            <View style={styles.fuelFilterRow}>
+            )
+          }
+        />
+      ) : (
+        <FlatList
+          key="fuel-list"
+          data={filteredFuelRecords}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.scrollContent}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadData(true)}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          ListHeaderComponent={
+            <View style={[styles.fuelFilterRow, { marginBottom: 12 }]}>
               <Text style={styles.fuelListSubHeader}>Lançamentos de Combustível</Text>
               {pendingCount > 0 && (
                 <TouchableOpacity
@@ -473,207 +556,207 @@ export function HistoryScreen({
                 </TouchableOpacity>
               )}
             </View>
+          }
+          renderItem={({ item: fuel }: { item: any }) => {
+            const fuelColor = getFuelBadgeStyle(fuel.fuelType);
+            const isDead = fuel.isOfflineQueueItem && fuel.offlineStatus === 'DEAD';
+            const isSyncing = fuel.isOfflineQueueItem && fuel.offlineStatus === 'SYNCING';
+            const isRetrying = retryingId === (fuel.offlineActionId || fuel.id);
+            const missingReceipt = isMissingReceipt(fuel);
 
-            {(() => {
-              const records = filterPendingOnly
-                ? allFuelRecords.filter((f) => f.isOfflineQueueItem || f.isPendingReceipt || !f.receiptUrl)
-                : allFuelRecords;
-
-              if (records.length === 0) {
-                return (
-                  <View style={styles.emptyCard}>
-                    <MaterialCommunityIcons name="gas-station-outline" size={38} color={colors.textDim} />
-                    <Text style={styles.emptyTitle}>
-                      {filterPendingOnly ? 'Nenhum comprovante pendente' : 'Nenhum abastecimento registrado'}
+            return (
+              <View
+                style={[
+                  styles.card,
+                  isDead
+                    ? styles.cardDead
+                    : fuel.isOfflineQueueItem
+                    ? styles.cardOfflinePending
+                    : missingReceipt
+                    ? styles.cardPendingReceipt
+                    : undefined,
+                ]}
+              >
+                <View style={styles.cardHeader}>
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.fuelVehiclePlate}>{fuel.vehiclePlate || '---'}</Text>
+                      {fuel.vehicleModel ? (
+                        <Text style={styles.fuelVehicleModel}>• {fuel.vehicleModel}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.fuelDateTime}>
+                      {fuel.fueledAt
+                        ? new Date(fuel.fueledAt).toLocaleString('pt-BR', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })
+                        : 'Recente'}
                     </Text>
-                    <Text style={styles.emptyDesc}>
-                      {filterPendingOnly
-                        ? 'Todos os seus abastecimentos estão com comprovante regularizado.'
-                        : 'Os registros de abastecimento realizados aparecerão aqui.'}
-                    </Text>
-                  </View>
-                );
-              }
-
-              return records.map((fuel: any) => {
-                const fuelColor = getFuelBadgeStyle(fuel.fuelType);
-                const isDead = fuel.isOfflineQueueItem && fuel.offlineStatus === 'DEAD';
-                const isSyncing = fuel.isOfflineQueueItem && fuel.offlineStatus === 'SYNCING';
-                const isRetrying = retryingId === (fuel.offlineActionId || fuel.id);
-
-                return (
-                  <View
-                    key={fuel.id}
-                    style={[
-                      styles.card,
-                      isDead
-                        ? styles.cardDead
-                        : fuel.isOfflineQueueItem
-                        ? styles.cardOfflinePending
-                        : fuel.isPendingReceipt || !fuel.receiptUrl
-                        ? styles.cardPendingReceipt
-                        : undefined,
-                    ]}
-                  >
-                    {/* Cabeçalho do Card: Veículo e Status */}
-                    <View style={styles.cardHeader}>
-                      <View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={styles.fuelVehiclePlate}>{fuel.vehiclePlate || '---'}</Text>
-                          {fuel.vehicleModel ? (
-                            <Text style={styles.fuelVehicleModel}>• {fuel.vehicleModel}</Text>
-                          ) : null}
-                        </View>
-                        <Text style={styles.fuelDateTime}>
-                          {fuel.fueledAt ? new Date(fuel.fueledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Recente'}
-                        </Text>
-                      </View>
-
-                    {/* BADGE: OFFLINE / PENDENTE / COMPLETO */}
-                    {fuel.isOfflineQueueItem ? (
-                      isDead ? (
-                        <View style={styles.badgeDead}>
-                          <Ionicons name="alert-circle" size={11} color="#F87171" />
-                          <Text style={styles.badgeDeadText}>Falha no envio</Text>
-                        </View>
-                      ) : isSyncing || isRetrying ? (
-                        <View style={styles.badgeSyncing}>
-                          <ActivityIndicator size={10} color="#38BDF8" />
-                          <Text style={styles.badgeSyncingText}>Sincronizando...</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.badgeOfflinePending}>
-                          <Ionicons name="time-outline" size={11} color="#FBBF24" />
-                          <Text style={styles.badgeOfflinePendingText}>Pendente de Envio</Text>
-                        </View>
-                      )
-                    ) : fuel.isPendingReceipt || !fuel.receiptUrl ? (
-                      <View style={styles.badgePendingReceipt}>
-                        <Ionicons name="alert-circle" size={11} color="#FBBF24" />
-                        <Text style={styles.badgePendingReceiptText}>Pendente: Comprovante</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.badgeComplete}>
-                        <Ionicons name="checkmark-circle" size={11} color="#34D399" />
-                        <Text style={styles.badgeCompleteText}>Completo</Text>
-                      </View>
-                    )}
                   </View>
 
-                  {/* Grid de Métricas: Combustível, Litros, Total */}
-                  <View style={styles.metricsGrid}>
-                    <View style={styles.metricCol}>
-                      <Text style={styles.metricLabel}>Combustível</Text>
-                      <View
-                        style={[
-                          styles.fuelTypeBadge,
-                          { backgroundColor: fuelColor.bg, borderColor: fuelColor.border },
-                        ]}
-                      >
-                        <Text style={[styles.fuelTypeBadgeText, { color: fuelColor.text }]}>
-                          {fuel.fuelType}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.metricCol}>
-                      <Text style={styles.metricLabel}>Litros</Text>
-                      <Text style={styles.metricValue}>{fuel.liters ? Number(fuel.liters).toFixed(1) : '0'} L</Text>
-                    </View>
-
-                    <View style={styles.metricCol}>
-                      <Text style={styles.metricLabel}>Total</Text>
-                      <Text style={styles.metricTotal}>
-                        R$ {fuel.totalCost ? Number(fuel.totalCost).toFixed(2).replace('.', ',') : '0,00'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Detalhe do Erro se Houver (DEAD) */}
-                  {fuel.isOfflineQueueItem && fuel.offlineError && (
-                    <View style={styles.offlineErrorBox}>
-                      <Text style={styles.offlineErrorTitle}>Motivo da falha:</Text>
-                      <Text style={styles.offlineErrorText}>{fuel.offlineError}</Text>
-                    </View>
-                  )}
-
-                  {/* Odômetro e Posto */}
-                  <View style={styles.fuelMetaRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons name="speedometer-outline" size={12} color="#8E9DA8" />
-                      <Text style={styles.fuelMetaText}>
-                        {fuel.odometerAtFueling ? `${fuel.odometerAtFueling.toLocaleString('pt-BR')} km` : '---'}
-                      </Text>
-                    </View>
-                    {fuel.gasStation ? (
-                      <Text style={styles.fuelMetaStation} numberOfLines={1}>
-                        {fuel.gasStation}
-                      </Text>
-                    ) : null}
-                  </View>
-
-                  {/* AÇÕES PROATIVAS */}
                   {fuel.isOfflineQueueItem ? (
                     isDead ? (
-                      <View style={styles.offlineDeadActionRow}>
-                        <TouchableOpacity
-                          style={styles.retryDeadBtn}
-                          onPress={() => handleRetryOffline(fuel.offlineActionId || fuel.id)}
-                          disabled={isRetrying}
-                          activeOpacity={0.8}
-                        >
-                          {isRetrying ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <>
-                              <Ionicons name="refresh" size={13} color="#FFFFFF" />
-                              <Text style={styles.retryDeadBtnText}>Tentar Novamente</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.discardDeadBtn}
-                          onPress={() => handleDiscardOffline(fuel.offlineActionId || fuel.id)}
-                          disabled={isRetrying}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="trash-outline" size={13} color="#F87171" />
-                          <Text style={styles.discardDeadBtnText}>Descartar</Text>
-                        </TouchableOpacity>
+                      <View style={styles.badgeDead}>
+                        <Ionicons name="alert-circle" size={11} color="#F87171" />
+                        <Text style={styles.badgeDeadText}>Falha no envio</Text>
+                      </View>
+                    ) : isSyncing || isRetrying ? (
+                      <View style={styles.badgeSyncing}>
+                        <ActivityIndicator size={10} color="#38BDF8" />
+                        <Text style={styles.badgeSyncingText}>Sincronizando...</Text>
                       </View>
                     ) : (
-                      <View style={styles.waitingAutoSyncBox}>
-                        <Ionicons name="cloud-upload-outline" size={12} color="#FBBF24" />
-                        <Text style={styles.waitingAutoSyncText}>Aguardando envio automático</Text>
+                      <View style={styles.badgeOfflinePending}>
+                        <Ionicons name="time-outline" size={11} color="#FBBF24" />
+                        <Text style={styles.badgeOfflinePendingText}>Pendente de Envio</Text>
                       </View>
                     )
-                  ) : fuel.isPendingReceipt || !fuel.receiptUrl ? (
-                    <TouchableOpacity
-                      style={styles.attachReceiptActionBtn}
-                      onPress={() => handleOpenAttachModal(fuel)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="camera" size={13} color="#080B0C" />
-                      <Text style={styles.attachReceiptActionText}>Tirar Foto do Comprovante</Text>
-                    </TouchableOpacity>
+                  ) : missingReceipt ? (
+                    <View style={styles.badgePendingReceipt}>
+                      <Ionicons name="alert-circle" size={11} color="#FBBF24" />
+                      <Text style={styles.badgePendingReceiptText}>Pendente: Comprovante</Text>
+                    </View>
                   ) : (
-                    <TouchableOpacity
-                      style={styles.viewReceiptActionBtn}
-                      onPress={() => handleOpenViewModal(fuel)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="eye-outline" size={13} color="#CBD5E1" />
-                      <Text style={styles.viewReceiptActionText}>Ver Comprovante</Text>
-                    </TouchableOpacity>
+                    <View style={styles.badgeComplete}>
+                      <Ionicons name="checkmark-circle" size={11} color="#34D399" />
+                      <Text style={styles.badgeCompleteText}>Completo</Text>
+                    </View>
                   )}
                 </View>
-              );
-            });
-          })()}
-          </View>
-        )}
-      </ScrollView>
+
+                <View style={styles.metricsGrid}>
+                  <View style={styles.metricCol}>
+                    <Text style={styles.metricLabel}>Combustível</Text>
+                    <View
+                      style={[
+                        styles.fuelTypeBadge,
+                        { backgroundColor: fuelColor.bg, borderColor: fuelColor.border },
+                      ]}
+                    >
+                      <Text style={[styles.fuelTypeBadgeText, { color: fuelColor.text }]}>
+                        {fuel.fuelType}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.metricCol}>
+                    <Text style={styles.metricLabel}>Litros</Text>
+                    <Text style={styles.metricValue}>
+                      {fuel.liters ? Number(fuel.liters).toFixed(1) : '0'} L
+                    </Text>
+                  </View>
+
+                  <View style={styles.metricCol}>
+                    <Text style={styles.metricLabel}>Total</Text>
+                    <Text style={styles.metricTotal}>
+                      R$ {fuel.totalCost ? Number(fuel.totalCost).toFixed(2).replace('.', ',') : '0,00'}
+                    </Text>
+                  </View>
+                </View>
+
+                {fuel.isOfflineQueueItem && fuel.offlineError && (
+                  <View style={styles.offlineErrorBox}>
+                    <Text style={styles.offlineErrorTitle}>Motivo da falha:</Text>
+                    <Text style={styles.offlineErrorText}>{fuel.offlineError}</Text>
+                  </View>
+                )}
+
+                <View style={styles.fuelMetaRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="speedometer-outline" size={12} color="#8E9DA8" />
+                    <Text style={styles.fuelMetaText}>
+                      {fuel.odometerAtFueling
+                        ? `${fuel.odometerAtFueling.toLocaleString('pt-BR')} km`
+                        : '---'}
+                    </Text>
+                  </View>
+                  {fuel.gasStation ? (
+                    <Text style={styles.fuelMetaStation} numberOfLines={1}>
+                      {fuel.gasStation}
+                    </Text>
+                  ) : null}
+                </View>
+
+                {fuel.isOfflineQueueItem ? (
+                  isDead ? (
+                    <View style={styles.offlineDeadActionRow}>
+                      <TouchableOpacity
+                        style={styles.retryDeadBtn}
+                        onPress={() => handleRetryOffline(fuel.offlineActionId || fuel.id)}
+                        disabled={isRetrying}
+                        activeOpacity={0.8}
+                      >
+                        {isRetrying ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <Ionicons name="refresh" size={13} color="#FFFFFF" />
+                            <Text style={styles.retryDeadBtnText}>Tentar Novamente</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.discardDeadBtn}
+                        onPress={() => handleDiscardOffline(fuel.offlineActionId || fuel.id)}
+                        disabled={isRetrying}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="trash-outline" size={13} color="#F87171" />
+                        <Text style={styles.discardDeadBtnText}>Descartar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.waitingAutoSyncBox}>
+                      <Ionicons name="cloud-upload-outline" size={12} color="#FBBF24" />
+                      <Text style={styles.waitingAutoSyncText}>Aguardando envio automático</Text>
+                    </View>
+                  )
+                ) : missingReceipt ? (
+                  <TouchableOpacity
+                    style={styles.attachReceiptActionBtn}
+                    onPress={() => handleOpenAttachModal(fuel)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="camera" size={13} color="#080B0C" />
+                    <Text style={styles.attachReceiptActionText}>Tirar Foto do Comprovante</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.viewReceiptActionBtn}
+                    onPress={() => handleOpenViewModal(fuel)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="eye-outline" size={13} color="#CBD5E1" />
+                    <Text style={styles.viewReceiptActionText}>Ver Comprovante</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          }}
+          ListEmptyComponent={
+            loading ? (
+              <View style={styles.emptyCard}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.emptyDesc}>Carregando abastecimentos...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyCard}>
+                <MaterialCommunityIcons name="gas-station-outline" size={38} color={colors.textDim} />
+                <Text style={styles.emptyTitle}>
+                  {filterPendingOnly ? 'Nenhum comprovante pendente' : 'Nenhum abastecimento registrado'}
+                </Text>
+                <Text style={styles.emptyDesc}>
+                  {filterPendingOnly
+                    ? 'Todos os seus abastecimentos estão com comprovante regularizado.'
+                    : 'Os registros de abastecimento realizados aparecerão aqui.'}
+                </Text>
+              </View>
+            )
+          }
+        />
+      )}
 
       {/* MODAL: VISUALIZAR COMPROVANTE FISCAL */}
       <Modal
@@ -711,7 +794,14 @@ export function HistoryScreen({
                   }
                 }}
               >
-                {selectedFuel?.receiptUrl ? (
+                {loadingReceipt ? (
+                  <View style={styles.receiptPlaceholderBox}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={[styles.receiptPlaceholderText, { marginTop: 10 }]}>
+                      Carregando foto do comprovante...
+                    </Text>
+                  </View>
+                ) : selectedFuel?.receiptUrl ? (
                   <>
                     <Image
                       source={{ uri: selectedFuel.receiptUrl }}

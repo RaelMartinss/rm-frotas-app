@@ -41,9 +41,17 @@ export type RefreshResult =
 class ApiService {
   private refreshPromise: Promise<RefreshResult> | null = null;
   private onUnauthorizedCallback: (() => void) | null = null;
+  private currentTripMemCache: { data: DriverPortalSummary; fetchedAt: number } | null = null;
+  private currentTripInflight: Promise<DriverPortalSummary> | null = null;
+  private historyInflight: Promise<DriverHistoryItem[]> | null = null;
+  private fuelHistoryInflight: Promise<DriverFuelHistoryItem[]> | null = null;
 
   setOnUnauthorized(callback: (() => void) | null): void {
     this.onUnauthorizedCallback = callback;
+  }
+
+  invalidateOperationalCache(): void {
+    this.currentTripMemCache = null;
   }
 
   async hasRefreshToken(): Promise<boolean> {
@@ -52,6 +60,10 @@ class ApiService {
   }
 
   private async purgeSessionStorage(clearAccount = false): Promise<void> {
+    this.currentTripMemCache = null;
+    this.currentTripInflight = null;
+    this.historyInflight = null;
+    this.fuelHistoryInflight = null;
     await Promise.all([
       storage.removeItem('rm_token'),
       storage.removeItem('rm_user'),
@@ -105,7 +117,7 @@ class ApiService {
 
     try {
       let response = await fetchWithTimeout(headers);
-      networkService.setOnline(true);
+      networkService.markActivity();
 
       // Se retornar 401 Unauthorized, aguarda renovação única (mutex) e repete a requisição
       if (response.status === 401) {
@@ -205,7 +217,7 @@ class ApiService {
           signal: controller.signal,
         }).finally(() => clearTimeout(timer));
 
-        networkService.setOnline(true);
+        networkService.markActivity();
 
         if (response.status === 401 || response.status === 403) {
           // Sessão revogada, expirada ou usuário inativado no servidor: limpa tokens imediatamente
@@ -340,30 +352,114 @@ class ApiService {
   // ==========================================
 
   /**
-   * Obtém os dados completos da viagem ativa, motorista, pendências e contagens.
-   * Suporta cache offline com fallback automático caso esteja sem conexão.
+   * Lê instantaneamente o resumo operacional salvo em cache (SWR - primeiro frame sem spinner)
    */
-  async getCurrentTrip(): Promise<DriverPortalSummary> {
+  async getCachedCurrentTrip(): Promise<DriverPortalSummary | null> {
+    if (this.currentTripMemCache) {
+      return this.currentTripMemCache.data;
+    }
+    const [cached, cachedPhoto] = await Promise.all([
+      storage.getItem(CACHE_KEYS.CURRENT_TRIP),
+      storage.getItem('rm_driver_photo'),
+    ]);
+    if (!cached) return null;
     try {
-      const res = await this.authenticatedFetch('/driver-portal/current-trip');
-      if (res.ok) {
-        const data: DriverPortalSummary = await res.json();
-        await storage.setItem(CACHE_KEYS.CURRENT_TRIP, JSON.stringify(data));
-        return data;
+      const parsed = JSON.parse(cached) as DriverPortalSummary;
+      if (parsed?.driver && !parsed.driver.photoUrl && cachedPhoto) {
+        parsed.driver.photoUrl = cachedPhoto;
       }
-    } catch (err) {
-      // Ignora erro de rede e recorre ao cache abaixo
+      this.currentTripMemCache = { data: parsed, fetchedAt: 0 };
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  async getCachedHistory(): Promise<DriverHistoryItem[]> {
+    const cached = await storage.getItem(CACHE_KEYS.HISTORY);
+    if (!cached) return [];
+    try {
+      const parsed = JSON.parse(cached);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async getCachedFuelHistory(): Promise<DriverFuelHistoryItem[]> {
+    const cached = await storage.getItem(CACHE_KEYS.FUEL_HISTORY);
+    if (!cached) return [];
+    try {
+      const parsed = JSON.parse(cached);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Obtém os dados completos da viagem ativa, motorista, pendências e contagens.
+   * Com deduplicação single-flight, omissão de foto já cacheada e TTL de 15s em RAM.
+   */
+  async getCurrentTrip(forceRefresh = false): Promise<DriverPortalSummary> {
+    if (
+      !forceRefresh &&
+      this.currentTripMemCache &&
+      this.currentTripMemCache.fetchedAt > 0 &&
+      Date.now() - this.currentTripMemCache.fetchedAt < 15000
+    ) {
+      return this.currentTripMemCache.data;
     }
 
-    // Fallback Offline: carregar do cache local
-    const cached = await storage.getItem(CACHE_KEYS.CURRENT_TRIP);
-    if (cached) {
+    if (this.currentTripInflight) {
+      return this.currentTripInflight;
+    }
+
+    this.currentTripInflight = (async (): Promise<DriverPortalSummary> => {
       try {
-        return JSON.parse(cached) as DriverPortalSummary;
-      } catch {}
-    }
+        const cachedPhoto = await storage.getItem('rm_driver_photo');
+        const endpoint = cachedPhoto
+          ? '/driver-portal/current-trip?omitPhoto=true'
+          : '/driver-portal/current-trip';
 
-    throw new Error('Não foi possível carregar os dados da viagem atual.');
+        const res = await this.authenticatedFetch(endpoint);
+        if (res.ok) {
+          const data: DriverPortalSummary = await res.json();
+
+          if (data.driver) {
+            if (data.driver.photoUrl) {
+              await storage.setItem('rm_driver_photo', data.driver.photoUrl);
+            } else if (data.driver.hasPhoto === false) {
+              await storage.removeItem('rm_driver_photo');
+            } else if (cachedPhoto) {
+              data.driver.photoUrl = cachedPhoto;
+            }
+          }
+
+          // Persiste versão enxuta no arquivo de resumo (sem duplicar a foto Base64 de ~400KB)
+          const slimSummary: DriverPortalSummary = data.driver
+            ? { ...data, driver: { ...data.driver, photoUrl: null } }
+            : data;
+          await storage.setItem(CACHE_KEYS.CURRENT_TRIP, JSON.stringify(slimSummary));
+
+          this.currentTripMemCache = { data, fetchedAt: Date.now() };
+          return data;
+        }
+      } catch {
+        // Ignora erro de rede e recorre ao cache abaixo
+      } finally {
+        this.currentTripInflight = null;
+      }
+
+      const fallback = await this.getCachedCurrentTrip();
+      if (fallback) {
+        return fallback;
+      }
+
+      throw new Error('Não foi possível carregar os dados da viagem atual.');
+    })();
+
+    return this.currentTripInflight;
   }
 
   /**
@@ -387,6 +483,7 @@ class ApiService {
     }
 
     const data = await res.json();
+    this.currentTripMemCache = null;
     await Promise.all([
       storage.removeItem(CACHE_KEYS.CURRENT_TRIP),
       storage.removeItem(CACHE_KEYS.HISTORY),
@@ -412,6 +509,7 @@ class ApiService {
     }
 
     const data = await res.json();
+    this.currentTripMemCache = null;
     await Promise.all([
       storage.removeItem(CACHE_KEYS.CURRENT_TRIP),
       storage.removeItem(CACHE_KEYS.HISTORY),
@@ -437,7 +535,9 @@ class ApiService {
         throw new Error(err.message || 'Falha ao salvar checklist.');
       }
 
-      return res.json();
+      const result = await res.json();
+      this.currentTripMemCache = null;
+      return result;
     } catch (err: any) {
       const isNetworkErr =
         !networkService.isOnline ||
@@ -519,6 +619,10 @@ class ApiService {
 
       if (res.ok) {
         const data = await res.json();
+        this.currentTripMemCache = null;
+        if (dto.receiptUrl && data?.id) {
+          storage.setItem(`rm_receipt_${data.id}`, dto.receiptUrl).catch(() => {});
+        }
         return {
           ...data,
           isOffline: false,
@@ -580,7 +684,12 @@ class ApiService {
         throw new Error(err.message || 'Falha ao anexar comprovante.');
       }
 
-      return res.json();
+      const result = await res.json();
+      this.currentTripMemCache = null;
+      if (receiptUrl) {
+        await storage.setItem(`rm_receipt_${id}`, receiptUrl).catch(() => {});
+      }
+      return result;
     } catch (err: any) {
       if (!networkService.isOnline) {
         await this.updateOfflineReceiptInQueue(id, receiptUrl, notes, gasStation);
@@ -620,53 +729,91 @@ class ApiService {
   }
 
   /**
-   * Obtém histórico de viagens com fallback em cache local
+   * Obtém histórico de viagens com deduplicação single-flight e fallback em cache local
    */
   async getHistory(): Promise<DriverHistoryItem[]> {
-    try {
-      const res = await this.authenticatedFetch('/driver-portal/history');
-      if (res.ok) {
-        const data: DriverHistoryItem[] = await res.json();
-        await storage.setItem(CACHE_KEYS.HISTORY, JSON.stringify(data));
-        return data;
-      }
-    } catch {}
-
-    const cached = await storage.getItem(CACHE_KEYS.HISTORY);
-    if (cached) {
-      try {
-        return JSON.parse(cached) as DriverHistoryItem[];
-      } catch {}
+    if (this.historyInflight) {
+      return this.historyInflight;
     }
 
-    return [];
+    this.historyInflight = (async () => {
+      try {
+        const res = await this.authenticatedFetch('/driver-portal/history');
+        if (res.ok) {
+          const data: DriverHistoryItem[] = await res.json();
+          await storage.setItem(CACHE_KEYS.HISTORY, JSON.stringify(data));
+          return data;
+        }
+      } catch {} finally {
+        this.historyInflight = null;
+      }
+
+      return this.getCachedHistory();
+    })();
+
+    return this.historyInflight;
   }
 
   /**
-   * Obtém histórico de abastecimentos com filtro opcional por pendência
+   * Obtém histórico leve de abastecimentos (sem trafegar dezenas de megabytes de Base64 de uma vez)
    */
   async getFuelHistory(pendingReceiptOnly = false): Promise<DriverFuelHistoryItem[]> {
-    const query = pendingReceiptOnly ? '?pendingReceiptOnly=true' : '';
-    try {
-      const res = await this.authenticatedFetch(`/driver-portal/fuel-history${query}`);
-      if (res.ok) {
-        const data: DriverFuelHistoryItem[] = await res.json();
-        if (!pendingReceiptOnly) {
-          await storage.setItem(CACHE_KEYS.FUEL_HISTORY, JSON.stringify(data));
+    if (!pendingReceiptOnly && this.fuelHistoryInflight) {
+      return this.fuelHistoryInflight;
+    }
+
+    const runner = async (): Promise<DriverFuelHistoryItem[]> => {
+      const query = pendingReceiptOnly
+        ? '?omitReceipts=true&pendingReceiptOnly=true'
+        : '?omitReceipts=true';
+      try {
+        const res = await this.authenticatedFetch(`/driver-portal/fuel-history${query}`);
+        if (res.ok) {
+          const data: DriverFuelHistoryItem[] = await res.json();
+          if (!pendingReceiptOnly) {
+            await storage.setItem(CACHE_KEYS.FUEL_HISTORY, JSON.stringify(data));
+          }
+          return data;
         }
-        return data;
+      } catch {}
+
+      const list = await this.getCachedFuelHistory();
+      return pendingReceiptOnly ? list.filter((item) => item.isPendingReceipt) : list;
+    };
+
+    if (pendingReceiptOnly) {
+      return runner();
+    }
+
+    this.fuelHistoryInflight = runner().finally(() => {
+      this.fuelHistoryInflight = null;
+    });
+    return this.fuelHistoryInflight;
+  }
+
+  /**
+   * Carrega sob demanda a foto do comprovante fiscal de um abastecimento específico (com cache local)
+   */
+  async getFuelReceipt(id: string): Promise<string | null> {
+    if (!id) return null;
+    const cacheKey = `rm_receipt_${id}`;
+    const cached = await storage.getItem(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const res = await this.authenticatedFetch(`/driver-portal/fuel-records/${id}/receipt`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.receiptUrl) {
+          await storage.setItem(cacheKey, data.receiptUrl);
+          return data.receiptUrl;
+        }
       }
     } catch {}
 
-    const cached = await storage.getItem(CACHE_KEYS.FUEL_HISTORY);
-    if (cached) {
-      try {
-        const list = JSON.parse(cached) as DriverFuelHistoryItem[];
-        return pendingReceiptOnly ? list.filter((item) => item.isPendingReceipt) : list;
-      } catch {}
-    }
-
-    return [];
+    return null;
   }
 
   /**
@@ -925,7 +1072,9 @@ class ApiService {
         throw new Error(errorData.message || 'Erro ao emitir alerta de SOS no servidor.');
       }
 
-      return res.json();
+      const result = await res.json();
+      this.currentTripMemCache = null;
+      return result;
     } catch (err: any) {
       // Se for falha de conexão na estrada, persiste na fila offline real
       const isNetworkError =
@@ -1073,18 +1222,14 @@ class ApiService {
     }
 
     const result = await res.json();
+    this.currentTripMemCache = null;
 
-    // Atualiza cache do resumo do motorista com a nova foto
-    try {
-      const cachedSummaryStr = await storage.getItem(CACHE_KEYS.CURRENT_TRIP);
-      if (cachedSummaryStr) {
-        const summary = JSON.parse(cachedSummaryStr);
-        if (summary.driver) {
-          summary.driver.photoUrl = photoUrl;
-          await storage.setItem(CACHE_KEYS.CURRENT_TRIP, JSON.stringify(summary));
-        }
-      }
-    } catch {}
+    // Mantém foto separada em rm_driver_photo (sem inflar CURRENT_TRIP JSON)
+    if (photoUrl) {
+      await storage.setItem('rm_driver_photo', photoUrl).catch(() => {});
+    } else {
+      await storage.removeItem('rm_driver_photo').catch(() => {});
+    }
 
     return result;
   }

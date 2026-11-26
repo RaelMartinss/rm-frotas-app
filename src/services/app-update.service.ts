@@ -1,6 +1,6 @@
 import { NativeModules, DeviceEventEmitter, Platform, Linking, Alert } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.0.29';
+export const CURRENT_APP_VERSION = '1.0.30';
 export const GITHUB_REPO = 'RaelMartinss/rm-frotas-app';
 
 const { AppInstaller } = NativeModules;
@@ -37,6 +37,8 @@ export interface UpdateDownloadState {
 
 type StateListener = (state: UpdateDownloadState) => void;
 
+const UPDATE_CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutos entre checagens automáticas
+
 class AppUpdateService {
   private downloadState: UpdateDownloadState = {
     isDownloading: false,
@@ -47,6 +49,9 @@ class AppUpdateService {
 
   private listeners: Set<StateListener> = new Set();
   private isSubscribed = false;
+  private cachedUpdateInfo: UpdateInfo | null = null;
+  private lastCheckAt = 0;
+  private inflightCheck: Promise<UpdateInfo> | null = null;
 
   constructor() {
     this.setupListeners();
@@ -130,65 +135,88 @@ class AppUpdateService {
   }
 
   /**
-   * Consulta a API do GitHub Releases para verificar se há versão mais recente
+   * Consulta a API do GitHub Releases com cache de 60 min e deduplicação (evita rate limit de 60 req/h)
    */
-  async checkForUpdates(): Promise<UpdateInfo> {
-    try {
-      const releasesUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest?_t=${Date.now()}`;
-      const response = await fetch(releasesUrl, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'RM-Frotas-App',
-        },
-      });
-
-      if (!response.ok) {
-        return {
-          hasUpdate: false,
-          currentVersion: CURRENT_APP_VERSION,
-          latestVersion: CURRENT_APP_VERSION,
-          downloadUrl: '',
-          releaseNotes: '',
-        };
-      }
-
-      const release: GitHubRelease = await response.json();
-      if (!release || !release.tag_name) {
-        return {
-          hasUpdate: false,
-          currentVersion: CURRENT_APP_VERSION,
-          latestVersion: CURRENT_APP_VERSION,
-          downloadUrl: '',
-          releaseNotes: '',
-        };
-      }
-
-      const latestTag = release.tag_name.replace(/^v/i, '').trim();
-      const apkAsset = release.assets?.find((a) => a.name.endsWith('.apk'));
-      const downloadUrl = apkAsset?.browser_download_url || '';
-      const sha256 = apkAsset?.digest || this.extractSha256FromBody(release.body, apkAsset?.name);
-
-      const hasUpdate = Boolean(downloadUrl) && this.isNewerVersion(latestTag, CURRENT_APP_VERSION);
-
-      return {
-        hasUpdate,
-        currentVersion: CURRENT_APP_VERSION,
-        latestVersion: latestTag,
-        downloadUrl,
-        sha256,
-        releaseNotes: this.formatReleaseNotes(release.body),
-      };
-    } catch (err) {
-      console.warn('[AppUpdateService] Falha ao verificar atualizações:', err);
-      return {
-        hasUpdate: false,
-        currentVersion: CURRENT_APP_VERSION,
-        latestVersion: CURRENT_APP_VERSION,
-        downloadUrl: '',
-        releaseNotes: '',
-      };
+  async checkForUpdates(force = false): Promise<UpdateInfo> {
+    if (!force && this.cachedUpdateInfo && Date.now() - this.lastCheckAt < UPDATE_CACHE_TTL_MS) {
+      return this.cachedUpdateInfo;
     }
+
+    if (this.inflightCheck) {
+      return this.inflightCheck;
+    }
+
+    this.inflightCheck = (async (): Promise<UpdateInfo> => {
+      try {
+        const querySuffix = force ? `?_t=${Date.now()}` : '';
+        const releasesUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest${querySuffix}`;
+        const response = await fetch(releasesUrl, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/vnd.github.v3+json',
+            'User-Agent': 'RM-Frotas-App',
+          },
+        });
+
+        if (!response.ok) {
+          return (
+            this.cachedUpdateInfo || {
+              hasUpdate: false,
+              currentVersion: CURRENT_APP_VERSION,
+              latestVersion: CURRENT_APP_VERSION,
+              downloadUrl: '',
+              releaseNotes: '',
+            }
+          );
+        }
+
+        const release: GitHubRelease = await response.json();
+        if (!release || !release.tag_name) {
+          return {
+            hasUpdate: false,
+            currentVersion: CURRENT_APP_VERSION,
+            latestVersion: CURRENT_APP_VERSION,
+            downloadUrl: '',
+            releaseNotes: '',
+          };
+        }
+
+        const latestTag = release.tag_name.replace(/^v/i, '').trim();
+        const apkAsset = release.assets?.find((a) => a.name.endsWith('.apk'));
+        const downloadUrl = apkAsset?.browser_download_url || '';
+        const sha256 = apkAsset?.digest || this.extractSha256FromBody(release.body, apkAsset?.name);
+
+        const hasUpdate = Boolean(downloadUrl) && this.isNewerVersion(latestTag, CURRENT_APP_VERSION);
+
+        const info: UpdateInfo = {
+          hasUpdate,
+          currentVersion: CURRENT_APP_VERSION,
+          latestVersion: latestTag,
+          downloadUrl,
+          sha256,
+          releaseNotes: this.formatReleaseNotes(release.body),
+        };
+
+        this.cachedUpdateInfo = info;
+        this.lastCheckAt = Date.now();
+        return info;
+      } catch (err) {
+        console.warn('[AppUpdateService] Falha ao verificar atualizações:', err);
+        return (
+          this.cachedUpdateInfo || {
+            hasUpdate: false,
+            currentVersion: CURRENT_APP_VERSION,
+            latestVersion: CURRENT_APP_VERSION,
+            downloadUrl: '',
+            releaseNotes: '',
+          }
+        );
+      } finally {
+        this.inflightCheck = null;
+      }
+    })();
+
+    return this.inflightCheck;
   }
 
   /**

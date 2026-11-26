@@ -175,6 +175,7 @@ class LocationService {
   private foregroundSubscription: Location.LocationSubscription | null = null;
   private queueFlushTimer: ReturnType<typeof setInterval> | null = null;
   private activeTripId: string | null = null;
+  private backgroundTaskActive = false;
   private lastPingMemory: { lat: number; lng: number; time: number; heading: number | null } | null = null;
   private onLocationChangeListeners: ((loc: Location.LocationObject) => void)[] = [];
 
@@ -252,6 +253,7 @@ class LocationService {
     }
 
     // 1. Inicia rastreamento em segundo plano via TaskManager (com Foreground Service do Android)
+    this.backgroundTaskActive = false;
     if (background) {
       try {
         const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
@@ -270,12 +272,14 @@ class LocationService {
             showsBackgroundLocationIndicator: true,
           });
         }
+        this.backgroundTaskActive = true;
       } catch (err: any) {
         console.warn('[LocationService] Não foi possível iniciar updates de background:', err?.message);
       }
     }
 
-    // 2. Inicia rastreamento em primeiro plano para garantir dados imediatos e atualizar a UI
+    // 2. Inicia watcher em primeiro plano para atualizar velocímetro da UI instantaneamente
+    // Só transmite HTTP por aqui caso a task de background NÃO esteja ativa (evita pings duplicados!)
     if (!this.foregroundSubscription && foreground) {
       try {
         this.foregroundSubscription = await Location.watchPositionAsync(
@@ -286,6 +290,11 @@ class LocationService {
           },
           async (loc) => {
             this.notifyListeners(loc);
+
+            // Se o ForegroundService/TaskManager já está ativo, ele centraliza os envios e lotes
+            if (this.backgroundTaskActive) {
+              return;
+            }
 
             if (!shouldSendLocation(loc, this.lastPingMemory)) {
               return;
@@ -347,6 +356,7 @@ class LocationService {
    */
   async stopTracking(): Promise<void> {
     this.activeTripId = null;
+    this.backgroundTaskActive = false;
     this.lastPingMemory = null;
     await storage.removeItem(STORAGE_ACTIVE_TRIP_KEY);
     await storage.removeItem(STORAGE_LAST_PING_KEY);
